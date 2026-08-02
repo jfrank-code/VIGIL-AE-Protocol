@@ -1,9 +1,10 @@
-import React from 'react';
-import { Search, ShieldAlert, Cpu } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Cpu, Camera, Eye } from 'lucide-react';
 
-export default function Header({ searchPlate, setSearchPlate }) {
+export default function Header({ searchPlate, setSearchPlate, activeTab, setActiveTab }) {
   return (
     <header className="flex flex-col md:flex-row justify-between items-start md:items-center pb-6 mb-6 border-b border-slate-800 gap-4">
+      {/* TÍTULO Y LOGO */}
       <div>
         <div className="flex items-center gap-3">
           <div className="p-2 bg-blue-500/10 border border-blue-500/30 rounded-xl text-blue-400">
@@ -20,8 +21,35 @@ export default function Header({ searchPlate, setSearchPlate }) {
         </div>
       </div>
 
+      {/* NAVEGACIÓN Y HERRAMIENTAS */}
       <div className="flex flex-wrap items-center gap-3">
-        {/* Status Badge */}
+        
+        {/* BOTONES DE CAMBIO DE SECCIÓN (PESTAÑAS) */}
+        <div className="flex items-center bg-slate-900 border border-slate-800 p-1 rounded-xl">
+          <button
+            onClick={() => setActiveTab('cameras')}
+            className={`flex items-center gap-1.5 text-xs font-mono font-bold px-3 py-1.5 rounded-lg transition-all ${
+              activeTab === 'cameras'
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Camera className="w-3.5 h-3.5" /> CÁMARAS EN VIVO
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ocr')}
+            className={`flex items-center gap-1.5 text-xs font-mono font-bold px-3 py-1.5 rounded-lg transition-all ${
+              activeTab === 'ocr'
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Eye className="w-3.5 h-3.5" /> FISCALIZACIÓN ANPR
+          </button>
+        </div>
+
+        {/* Status Badge Blockchain */}
         <div className="flex items-center gap-2 bg-slate-900/90 border border-emerald-500/30 px-3 py-1.5 rounded-full shadow-inner">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
           <span className="text-xs font-mono font-medium text-emerald-400">

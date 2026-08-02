@@ -1,0 +1,21 @@
+# === Python / Backend ===
+backend/venv/
+venv/
+backend/.env
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+
+# === Node / Frontend ===
+node_modules/
+frontend/node_modules/
+dist/
+build/
+
+# === VS Code / Sistema ===
+.vscode/
+.DS_Store
