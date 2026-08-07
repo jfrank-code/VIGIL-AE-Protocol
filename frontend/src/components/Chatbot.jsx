@@ -1,18 +1,10 @@
 import React, { useState } from 'react';
-import { MessageSquare, X, Send, Bot, User, ShieldCheck, Sparkles } from 'lucide-react';
-
-const MOCK_BOT_RESPONSES = {
-  anular: "Para anular un acta en la sección 'EXPEDIENTES', la autoridad municipal ingresa la Resolución Municipal y motivo. Esto genera un hash inmutable en Arbitrum.",
-  placa: "Puedes consultar cualquier multa en el 'PORTAL CIUDADANO' ingresando la placa del vehículo (ej: P3A-891 o B7X-102).",
-  blockchain: "VIGIL-AE registra el hash criptográfico de cada infracción en Arbitrum Sepolia para impedir la alteración arbitraria de las pruebas.",
-  monto: "Los montos de las multas se calculan según el tipo de infracción (Zona Rígida, Berma Sur o Obstrucción).",
-  default: "Hola, soy el Copiloto IA de VIGIL-AE. Puedo orientarte sobre las cámaras de vigilancia, el registro en Arbitrum o la emisión de reportes."
-};
+import { X, Send, Bot, User, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
 
 export default function Chatbot() {
-  // Abierto por defecto para máxima visibilidad
   const [isOpen, setIsOpen] = useState(true);
   const [inputMessage, setInputMessage] = useState('');
+  const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([
     {
       sender: 'bot',
@@ -20,25 +12,42 @@ export default function Chatbot() {
     }
   ]);
 
-  const handleSendMessage = (e) => {
+  const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!inputMessage.trim()) return;
+    if (!inputMessage.trim() || loading) return;
 
     const userText = inputMessage;
     setMessages(prev => [...prev, { sender: 'user', text: userText }]);
     setInputMessage('');
+    setLoading(true);
 
-    setTimeout(() => {
-      const lower = userText.toLowerCase();
-      let botAnswer = MOCK_BOT_RESPONSES.default;
+    try {
+      const response = await fetch('http://localhost:8000/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: userText }),
+      });
 
-      if (lower.includes('anul') || lower.includes('resolución')) botAnswer = MOCK_BOT_RESPONSES.anular;
-      else if (lower.includes('placa') || lower.includes('buscar')) botAnswer = MOCK_BOT_RESPONSES.placa;
-      else if (lower.includes('blockchain') || lower.includes('arbitrum')) botAnswer = MOCK_BOT_RESPONSES.blockchain;
-      else if (lower.includes('monto') || lower.includes('precio')) botAnswer = MOCK_BOT_RESPONSES.monto;
+      if (!response.ok) {
+        throw new Error('Error en la comunicación con el servidor');
+      }
 
-      setMessages(prev => [...prev, { sender: 'bot', text: botAnswer }]);
-    }, 600);
+      const data = await response.json();
+      setMessages(prev => [...prev, { sender: 'bot', text: data.reply }]);
+    } catch (error) {
+      console.error('Error enviando mensaje al chatbot:', error);
+      setMessages(prev => [
+        ...prev,
+        {
+          sender: 'bot',
+          text: '⚠️ No se pudo conectar con el servidor del Asistente VIGIL-AE. Verifica que el backend esté ejecutándose en la puerta 8000.'
+        }
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -55,7 +64,7 @@ export default function Chatbot() {
 
       {isOpen && (
         <div className="bg-slate-900 border-2 border-cyan-500/50 rounded-2xl shadow-2xl w-80 md:w-96 h-[460px] flex flex-col overflow-hidden animate-fadeIn backdrop-blur-xl">
-          {/* Header con luz de atención */}
+          {/* Header */}
           <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 p-3.5 border-b border-cyan-500/30 flex justify-between items-center relative">
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-cyan-500/20 border border-cyan-400/40 rounded-xl text-cyan-300 relative">
@@ -105,6 +114,12 @@ export default function Chatbot() {
                 )}
               </div>
             ))}
+            {loading && (
+              <div className="flex items-center gap-2 text-cyan-400 text-xs font-mono">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Procesando consulta...</span>
+              </div>
+            )}
           </div>
 
           {/* Input */}
@@ -114,11 +129,13 @@ export default function Chatbot() {
               placeholder="Escribe tu consulta..."
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono"
+              disabled={loading}
+              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono disabled:opacity-50"
             />
             <button
               type="submit"
-              className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 p-2 rounded-xl transition-all shadow-md font-bold"
+              disabled={loading}
+              className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 p-2 rounded-xl transition-all shadow-md font-bold disabled:opacity-50"
             >
               <Send className="w-4 h-4" />
             </button>

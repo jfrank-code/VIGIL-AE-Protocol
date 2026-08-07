@@ -1,9 +1,21 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-export const generatePdfReport = (searchPlate = '') => {
+/**
+ * Genera el reporte PDF con datos reales provenientes de /api/stats
+ * @param {Object} stats - Objeto retornado por el backend FastAPI (/api/stats)
+ * @param {string} searchPlate - Filtro de placa opcional
+ */
+export const generatePdfReport = (stats = {}, searchPlate = '') => {
   const doc = new jsPDF();
   const now = new Date().toLocaleString('es-PE');
+
+  // Extraer datos reales del objeto stats con valores por defecto
+  const totalVehiculos = stats.conteo_total ?? 0;
+  const registrosMultas = stats.registros_multas || [];
+  const totalInfracciones = registrosMultas.length;
+  const saturacionBerma = stats.saturacion_berma ?? 0.0;
+  const tiempoMonitoreo = stats.tiempo_monitoreo ?? 0.0;
 
   // Encabezado
   doc.setFillColor(15, 23, 42); // Dark slate
@@ -18,52 +30,64 @@ export const generatePdfReport = (searchPlate = '') => {
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.text('Reporte Oficial de Fiscalización Vial & Auditoría IA', 14, 28);
-  doc.text(`Fecha de Emisión: ${now}`, 130, 28);
+  doc.text(`Fecha de Emisión: ${now}`, 120, 28);
 
-  // Resumen Ejecutivo
+  // 1. Resumen Ejecutivo (Métricas Reales)
   doc.setTextColor(30, 41, 59);
   doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.text('1. Métricas Consolidadas de la Sesión', 14, 50);
 
   const metricsData = [
-    ['Total Vehículos Monitoreados', '128 unidades'],
-    ['Vehículos Mal Estacionados Detectados', '12 infracciones'],
-    ['Nivel de Capacidad Vial Bloqueada', '38.5%'],
-    ['Registros Confirmados en Arbitrum', '12 Hashes SHA-256'],
+    ['Tiempo Total Monitoreado', `${tiempoMonitoreo} min`],
+    ['Total Vehículos Flujo Detectado', `${totalVehiculos} unidades`],
+    ['Infracciones Confirmadas (>5s)', `${totalInfracciones} emitidas`],
+    ['Saturación de Berma / Vía', `${saturacionBerma}%`],
+    ['Autos / Camiones / Motos / Buses', `${stats.autos || 0} / ${stats.camiones || 0} / ${stats.motos || 0} / ${stats.buses || 0}`]
   ];
 
   autoTable(doc, {
     startY: 55,
-    head: [['Indicador de Control', 'Valor Registrado']],
+    head: [['Indicador de Control (En Tiempo Real)', 'Valor Registrado']],
     body: metricsData,
     theme: 'striped',
-    headStyles: { fillStyle: [30, 58, 138] },
+    headStyles: { fillColor: [30, 58, 138] },
   });
 
-  // Lista de Placas Objetivo
+  // 2. Registros de Infracciones Reales
   const currentY = doc.lastAutoTable.finalY + 12;
-  doc.text('2. Registro Detallado de Placas Detectadas', 14, currentY);
+  doc.text('2. Registro Detallado de Placas Fiscalizadas', 14, currentY);
 
-  const platesData = [
-    ['ACTA-2026-001', 'P3A-891', 'Zona Rígida (Nodo 01)', 'EMITIDA', '0x8f2a...3e1b'],
-    ['ACTA-2026-002', 'B7X-102', 'Berma Sur (Nodo 01)', 'ANULADA', '0x4c9e...9a2f'],
-    ['ACTA-2026-003', 'F9K-441', 'Obstrucción Ciclovía (Nodo 02)', 'PAGADA', '0x1b7d...8a4c'],
-  ];
+  // Filtrar si el usuario buscó una placa en la UI
+  const multasFiltradas = searchPlate 
+    ? registrosMultas.filter(m => m.placa.toLowerCase().includes(searchPlate.toLowerCase()))
+    : registrosMultas;
+
+  // Formatear filas de la tabla con los datos del backend
+  const platesData = multasFiltradas.length > 0 
+    ? multasFiltradas.map((m, index) => [
+        `ACTA-2026-${(index + 1).toString().padStart(3, '0')}`,
+        m.hora || '--:--:--',
+        m.placa || 'NO DETECTADA',
+        m.vehiculo || 'Auto',
+        m.origen || 'Nodo General',
+        'CONFIRMADA'
+      ])
+    : [['--', '--:--:--', 'SIN INFRACCIONES', '--', '--', 'SIN REGISTROS']];
 
   autoTable(doc, {
     startY: currentY + 5,
-    head: [['ID Acta', 'Placa', 'Tipo Infracción', 'Estado', 'Hash Blockchain']],
+    head: [['ID Acta', 'Hora', 'Placa Fiscalizada', 'Vehículo', 'Ubicación', 'Estado']],
     body: platesData,
     theme: 'grid',
-    headStyles: { fillStyle: [15, 23, 42] },
+    headStyles: { fillColor: [15, 23, 42] },
   });
 
   // Pie de página
   const pageHeight = doc.internal.pageSize.height;
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text('Documento generado automáticamente por VIGIL-AE Protocol - Registro Inmutable Arbitrum Sepolia', 14, pageHeight - 10);
+  doc.text('Documento generado automáticamente por VIGIL-AE Protocol - Registro Inmutable de Fiscalización', 14, pageHeight - 10);
 
   // Descargar archivo PDF
   doc.save(`VIGIL-AE_Reporte_${Date.now()}.pdf`);

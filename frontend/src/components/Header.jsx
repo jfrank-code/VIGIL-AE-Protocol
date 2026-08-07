@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Cpu, Camera, Eye, FileText, Download, ArrowLeft } from 'lucide-react';
 import { generatePdfReport } from '../utils/reportGenerator';
 
-export default function Header({ searchPlate, setSearchPlate, activeTab, setActiveTab }) {
+export default function Header({ searchPlate, setSearchPlate, activeTab, setActiveTab, stats }) {
   const navigate = useNavigate();
 
   return (
@@ -72,9 +72,9 @@ export default function Header({ searchPlate, setSearchPlate, activeTab, setActi
           </button>
         </div>
 
-        {/* BOTÓN DESCARGAR REPORTE PDF */}
+        {/* BOTÓN DESCARGAR REPORTE PDF CON DATOS REALES */}
         <button
-          onClick={() => generatePdfReport(searchPlate)}
+          onClick={() => generatePdfReport(stats, searchPlate)}
           className="flex items-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 text-xs font-mono font-bold px-3.5 py-2 rounded-xl transition-all shadow-lg active:scale-95"
         >
           <Download className="w-4 h-4 text-emerald-400" />
