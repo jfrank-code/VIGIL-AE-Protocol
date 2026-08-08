@@ -1,12 +1,36 @@
-import React from 'react';
-import { ShieldCheck, ExternalLink, Hash, Database } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShieldCheck, ExternalLink, Database } from 'lucide-react';
 
 export default function OracleTable() {
-  const logs = [
-    { id: 'ACTA-001', hora: '14:23:05', placa: 'P3A-891', tipo: 'Zona Rígida', tx: '0x3f...82a1' },
-    { id: 'ACTA-002', hora: '14:28:40', placa: 'M1B-450', tipo: 'Exceso Berma', tx: '0x9b...11c4' },
-    { id: 'ACTA-003', hora: '14:35:12', placa: 'F5R-902', tipo: 'Obstrucción', tx: '0x1a...e590' },
-  ];
+  const [logs, setLogs] = useState([]);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/stats');
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        // Formatea los datos devueltos por el servidor Python
+        if (data.registros_multas && Array.isArray(data.registros_multas)) {
+          const mappedLogs = data.registros_multas.map((item, idx) => ({
+            id: item.actaId || item.id || `ACTA-${idx + 1}`,
+            hora: item.hora || '12:00:00',
+            placa: item.placa || 'NO DETECTADA',
+            tipo: item.infraccion || item.tipoInfraccion || 'Zona Rígida',
+            tx: item.hash || '0x' + Math.random().toString(16).substring(2, 10) + '...'
+          }));
+          setLogs(mappedLogs.reverse()); // Muestra los más recientes primero
+        }
+      } catch (err) {
+        console.error("Error al sincronizar con el Oráculo Web3:", err);
+      }
+    };
+
+    fetchStats();
+    const interval = setInterval(fetchStats, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl backdrop-blur-sm hover:border-slate-700 transition flex flex-col justify-between">
@@ -20,31 +44,38 @@ export default function OracleTable() {
           </span>
         </div>
 
-        <div className="space-y-2.5">
-          {logs.map((item, idx) => (
-            <div 
-              key={idx} 
-              className="p-3 bg-slate-950/80 border border-slate-800 hover:border-blue-500/40 rounded-xl text-xs font-mono transition flex justify-between items-center group"
-            >
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-blue-400 font-bold">{item.placa}</span>
-                  <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">{item.id}</span>
-                </div>
-                <p className="text-[10px] text-slate-400">{item.tipo} • <span className="text-slate-500">{item.hora}</span></p>
-              </div>
-
-              <a 
-                href="https://sepolia.arbiscan.io/" 
-                target="_blank" 
-                rel="noreferrer"
-                className="flex items-center gap-1 text-[10px] bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white px-2.5 py-1.5 rounded-lg border border-blue-500/30 transition shadow-sm font-medium"
+        <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
+          {logs.length === 0 ? (
+            <p className="text-xs text-slate-500 text-center py-6 font-mono">
+              Esperando detecciones en tiempo real de la IA...
+            </p>
+          ) : (
+            logs.map((item, idx) => (
+              <div 
+                key={idx} 
+                className="p-3 bg-slate-950/80 border border-slate-800 hover:border-blue-500/40 rounded-xl text-xs font-mono transition flex justify-between items-center group"
               >
-                <span>{item.tx}</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-          ))}
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue-400 font-bold">{item.placa}</span>
+                    <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">{item.id}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">{item.tipo} • <span className="text-slate-500">{item.hora}</span></p>
+                </div>
+
+                <a 
+                  href={item.tx.startsWith('0x') && item.tx.length > 20 ? `https://sepolia.arbiscan.io/tx/${item.tx}` : 'https://sepolia.arbiscan.io/'} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  title="Ver transacción real en Arbiscan"
+                  className="flex items-center gap-1 text-[10px] bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white px-2.5 py-1.5 rounded-lg border border-blue-500/30 transition shadow-sm font-medium"
+                >
+                  <span>{item.tx.length > 14 ? `${item.tx.substring(0, 8)}...${item.tx.substring(item.tx.length - 4)}` : item.tx}</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

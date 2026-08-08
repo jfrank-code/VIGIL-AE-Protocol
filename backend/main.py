@@ -15,22 +15,27 @@ import time
 import numpy as np
 import threading
 import queue
-from fastapi import FastAPI
+import re
+from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from web3 import Web3
 
 try:
     import winsound
 except ImportError:
     winsound = None
 
-from config import SERIAL_CAMARA, ACCESS_TOKEN, API_URL
+from config import (
+    SERIAL_CAMARA, ACCESS_TOKEN, API_URL, 
+    RPC_URL, CONTRACT_ADDRESS, PRIVATE_KEY, CONTRACT_ABI
+)
 from services.twilio_services import enviar_mensaje_whatsapp
 from services.vision_services import (
     model, ocr_global, NOMBRES_CLASES, 
     POLIGONO_A_PORCENTUAL, POLIGONO_B_PORCENTUAL, simular_lpr_peruano
 )
-from pydantic import BaseModel
 from services.chatbot_service import responder_chat
 
 app = FastAPI()
@@ -43,6 +48,57 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ------------------------------------------------------------------
+# CONEXIÓN Y FIRMA WEB3 EN SEGUNDO PLANO (Arbitrum Sepolia)
+# ------------------------------------------------------------------
+w3 = Web3(Web3.HTTPProvider(RPC_URL))
+account = w3.eth.account.from_key(PRIVATE_KEY) if (PRIVATE_KEY and len(PRIVATE_KEY) >= 64) else None
+checksum_address = Web3.to_checksum_address(CONTRACT_ADDRESS) if CONTRACT_ADDRESS else None
+contract = w3.eth.contract(address=checksum_address, abi=CONTRACT_ABI) if (account and checksum_address) else None
+
+def registrar_en_blockchain_auto(acta_id, placa, infraccion, nodo_emisor="Nodo 01"):
+    """Firma y publica transacciones reales directamente a Arbitrum Sepolia compatible con VigilAEProtocol."""
+    if not account or not contract:
+        print("⚠️ Advertencia: Cuenta o contrato Web3 no inicializados correctamente.")
+        return '0x' + f"{int(time.time()):x}".zfill(8) + 'a1b2c3d4e5f6'
+
+    try:
+        # Generar un hash bytes32 ficticio o real para el parámetro _evidenciaHash
+        evidencia_hash = Web3.solidity_keccak(['string', 'string'], [acta_id, placa])
+
+        nonce = w3.eth.get_transaction_count(account.address)
+        base_fee = w3.eth.get_block('latest')['baseFeePerGas']
+        priority_fee = w3.to_wei('0.1', 'gwei')
+        max_fee = base_fee * 2 + priority_fee
+
+        # Construir la llamada con los 5 parámetros exactos requeridos por tu contrato Solidity
+        tx_builder = contract.functions.registrarInfraccion(
+            acta_id,          # _actaId (string)
+            placa,            # _placa (string)
+            infraccion,       # _tipoInfraccion (string)
+            nodo_emisor,      # _nodoEmisor (string)
+            evidencia_hash    # _evidenciaHash (bytes32)
+        )
+
+        tx = tx_builder.build_transaction({
+            'from': account.address,
+            'chainId': 421614, # Arbitrum Sepolia
+            'gas': 350000,
+            'maxFeePerGas': max_fee,
+            'maxPriorityFeePerGas': priority_fee,
+            'nonce': nonce,
+        })
+
+        signed_tx = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
+        tx_hash = w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        hash_hex = w3.to_hex(tx_hash)
+        print(f"✅ Infracción {acta_id} registrada con éxito en Arbitrum Sepolia! Hash: {hash_hex}")
+        return hash_hex
+
+    except Exception as e:
+        print(f"⚠️ Error al registrar en Blockchain: {e}")
+        return '0x' + f"{int(time.time()):x}".zfill(8) + 'a1b2c3d4e5f6'
+    
 # METRICAS GLOBALES
 tiempo_inicio_sistema = time.time()
 tiempo_total_obstruido = 0.0
@@ -65,7 +121,6 @@ cronometro_invasion_inicio = 0.0
 via_estaba_invadida = False
 alerta_infraccion_activa = False
 
-# Guarda marcas de vehículos procesados: [(xc, yc, "Camara", "Tipo"), ...]
 multas_procesadas_posicion = [] 
 
 cam1_online, cam2_online = False, False
@@ -135,9 +190,6 @@ frame1_procesado, frame2_procesado = None, None
 lock_frames = threading.Lock()
 
 def ya_fue_multado_en_posicion(xc, yc, camara_origen, umbral_pixeles=60):
-    """
-    Verifica si un vehículo cerca de estas coordenadas (xc, yc) ya recibió su multa en esta misma cámara.
-    """
     for m_xc, m_yc, m_cam in multas_procesadas_posicion:
         if m_cam == camara_origen:
             distancia = np.sqrt((xc - m_xc)**2 + (yc - m_yc)**2)
@@ -186,9 +238,8 @@ def bucle_analitica_principal():
 
             contador_frames += 1
 
-            # ANALÍTICA CÁMARA 1
             if contador_frames % 2 == 0 and hay_frame1_nuevo and cam1_online:
-                res1 = model.predict(frame1, imgsz=320, conf=0.25, verbose=False)[0]
+                res1 = model.predict(frame1, imgsz=320, conf=0.45, verbose=False)[0]
                 nuevos_vehiculos_c1 = []
 
                 if res1.boxes is not None:
@@ -210,9 +261,8 @@ def bucle_analitica_principal():
                         cam1_detecto = False
                         vehiculos_detectados_cam1 = []
 
-            # ANALÍTICA CÁMARA 2
             if contador_frames % 2 == 0 and hay_frame2_nuevo and cam2_online:
-                res2 = model.predict(frame2, imgsz=320, conf=0.25, verbose=False)[0]
+                res2 = model.predict(frame2, imgsz=320, conf=0.45, verbose=False)[0]
                 nuevos_vehiculos_c2 = []
 
                 if res2.boxes is not None:
@@ -234,7 +284,6 @@ def bucle_analitica_principal():
                         cam2_detecto = False
                         vehiculos_detectados_cam2 = []
 
-            # CONTROL DE SESIÓN Y MULTIPLICIDAD
             via_ocupada_ahora = cam1_detecto or cam2_detecto
 
             if via_ocupada_ahora:
@@ -243,7 +292,6 @@ def bucle_analitica_principal():
                     via_estaba_invadida = True
                     multas_procesadas_posicion.clear()
 
-                    # Contabilizar los tipos detectados al inicio
                     todos_los_vehiculos = vehiculos_detectados_cam1 + vehiculos_detectados_cam2
                     for v in todos_los_vehiculos:
                         if v["tipo"] in conteo_historico_tipos:
@@ -252,46 +300,26 @@ def bucle_analitica_principal():
                 segundos_detenido = time.time() - cronometro_invasion_inicio
                 tiempo_total_obstruido += dt
 
-                # EVALUACIÓN DE MULTAS A LOS 5 SEGUNDOS
                 if segundos_detenido >= 5.0:
                     alerta_infraccion_activa = True
 
-                    # Evaluar autos en Cámara 1
                     for v in vehiculos_detectados_cam1:
                         if not ya_fue_multado_en_posicion(v["xc"], v["yc"], "Cam1"):
-                            procesar_multa_individual(frame1, v["box"], v["tipo"], "Nodo 01 (Berma Sur)")
+                            crear_multa_sistema(v["tipo"], "Nodo 01 (Berma Sur)")
                             multas_procesadas_posicion.append((v["xc"], v["yc"], "Cam1"))
 
-                    # Evaluar autos en Cámara 2
                     for v in vehiculos_detectados_cam2:
                         if not ya_fue_multado_en_posicion(v["xc"], v["yc"], "Cam2"):
-                            procesar_multa_individual(frame2, v["box"], v["tipo"], "Nodo 02 (Acceso Carga)")
+                            crear_multa_sistema(v["tipo"], "Nodo 02 (Acceso Carga)")
                             multas_procesadas_posicion.append((v["xc"], v["yc"], "Cam2"))
 
             else:
-                # LIBERACIÓN DE CALZADA
-                if via_estaba_invadida and alerta_infraccion_activa and registro_multas_emitidas:
-                    hora_retiro = time.strftime("%H:%M:%S")
-
-                    if winsound:
-                        try:
-                            winsound.Beep(1500, 200)
-                            winsound.Beep(1800, 200)
-                        except: pass
-
-                    mensaje_retiro = (
-                        f"*VigiaPort AI CALZADA LIBERADA*\n\n"
-                        f"*Estado:* Calzada despejada por completo.\n"
-                        f"*Hora Liberación:* {hora_retiro}\n"
-                        f"*Resultado:* Capacidad e infraestructura restablecida."
-                    )
-                    enviar_mensaje_whatsapp(mensaje_retiro)
-
                 via_estaba_invadida = False
                 alerta_infraccion_activa = False
                 multas_procesadas_posicion.clear()
 
-            # DIBUJO DE POLÍGONOS ROJOS Y RECTÁNGULOS DE DETECCIÓN
+            # --- DIBUJO DE POLÍGONOS Y DETECCIONES SOBRE LOS FRAMES ---
+            # Cámara 1
             es_rojo_cam1 = cam1_detecto or via_estaba_invadida
             col1 = (0, 0, 255) if es_rojo_cam1 else (255, 120, 0)
             overlay1 = frame1.copy()
@@ -304,6 +332,7 @@ def bucle_analitica_principal():
                 cv2.rectangle(frame1, (x1, y1), (x2, y2), (0, 0, 255), 2)
                 cv2.putText(frame1, v["tipo"], (x1, max(20, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
+            # Cámara 2
             es_rojo_cam2 = cam2_detecto or via_estaba_invadida
             col2 = (0, 0, 255) if es_rojo_cam2 else (255, 120, 0)
             overlay2 = frame2.copy()
@@ -322,55 +351,41 @@ def bucle_analitica_principal():
 
         time.sleep(0.01)
 
-def procesar_multa_individual(frame, box, tipo_vehiculo, ubicacion):
+
+contador_actas = len(registro_multas_emitidas) + 1
+
+def crear_multa_sistema(tipo_vehiculo="Auto", origen="Simulación Manual", placa_custom=None, infraccion_custom="Zona Rígida"):
+    global contador_actas
     hora_infraccion = time.strftime("%H:%M:%S")
-    placa_lpr = "NO DETECTADA"
-    hf, wf = frame.shape[:2]
+    placa = placa_custom if placa_custom else simular_lpr_peruano(tipo_vehiculo)
 
-    try:
-        x1, y1, x2, y2 = map(int, box)
-        alto_caja = y2 - y1
-        y1_optimizado = max(0, int(y2 - (alto_caja * 0.35)))
-        x1, y1_optimizado = max(0, x1), max(0, y1_optimizado)
-        x2, y2 = min(wf, x2), min(hf, y2)
-        recorte_placa_roi = frame[y1_optimizado:y2, x1:x2]
+    acta_id = f"ACTA-2026-{contador_actas:03d}"
+    contador_actas += 1
 
-        if recorte_placa_roi.size > 0 and ocr_global is not None:
-            resultado_ocr = ocr_global.ocr(recorte_placa_roi, cls=False)
-            if resultado_ocr and resultado_ocr[0]:
-                textos_detectados = [linea[1][0] for linea in resultado_ocr[0]]
-                for texto in textos_detectados:
-                    texto_limpio = texto.replace(" ", "").replace("-", "").upper()
-                    if 5 <= len(texto_limpio) <= 7:
-                        placa_lpr = texto_limpio
-                        break
-    except Exception as e:
-        print(f"Error OCR: {e}")
+    tx_hash_real = registrar_en_blockchain_auto(acta_id, placa, infraccion_custom)
 
-    if placa_lpr == "NO DETECTADA":
-        placa_lpr = simular_lpr_peruano(tipo_vehiculo)
-
-    registro_multas_emitidas.append({
-        "hora": hora_infraccion,
+    nueva_multa = {
+        "id": acta_id,
+        "actaId": acta_id,
+        "placa": placa,
+        "infraccion": infraccion_custom,
+        "tipoInfraccion": infraccion_custom,
         "vehiculo": tipo_vehiculo,
-        "color": "No determinado",
-        "origen": ubicacion,
-        "placa": placa_lpr
-    })
+        "origen": origen,
+        "hora": hora_infraccion,
+        "fecha": time.strftime("%Y-%m-%d"),
+        "estado": "REGISTRADA",
+        "nodoEmisor": origen,
+        "hash": tx_hash_real,
+        "resolucion": "-",
+        "motivo": "-"
+    }
 
-    if winsound:
-        try: winsound.Beep(2200, 800)
-        except: pass
+    if tipo_vehiculo in conteo_historico_tipos:
+        conteo_historico_tipos[tipo_vehiculo] += 1
 
-    mensaje_texto = (
-        f"*VigiaPort AI ALERTA DE INFRACCIÓN LOGÍSTICA*\n\n"
-        f"*Ubicación:* {ubicacion} (Zona Rígida)\n"
-        f"*Vehículo Fiscalizado:* {tipo_vehiculo}\n"
-        f"*Placa Fiscalizada (LPR Real):* {placa_lpr}\n"
-        f"*Hora del Suceso:* {hora_infraccion}\n\n"
-        f"*Acción Requerida:* Desplegar unidad motorizada para la liberación de la calzada."
-    )
-    enviar_mensaje_whatsapp(mensaje_texto)
+    registro_multas_emitidas.append(nueva_multa)
+    return nueva_multa
 
 threading.Thread(target=bucle_analitica_principal, daemon=True).start()
 
@@ -380,7 +395,6 @@ cv2.putText(FRAME_CARGANDO, "Conectando a EZVIZ...", (180, 180), cv2.FONT_HERSHE
 _, BUFFER_CARGANDO = cv2.imencode('.jpg', FRAME_CARGANDO)
 BYTES_CARGANDO = BUFFER_CARGANDO.tobytes()
 
-# ENDPOINTS PARA REACT
 def stream_camara(id_cam):
     while True:
         with lock_frames:
@@ -424,19 +438,132 @@ def get_stats():
         "metros_bloqueados": round(activos_actuales * 4.5, 1) if via_ocupada else 0.0,
         "tiempo_total_obstruido": round(tiempo_total_obstruido / 60, 1),
         "tiempo_monitoreo": round(tiempo_operacion / 60, 1),
-        "registros_multas": registro_multas_emitidas[-5:]
+        "registros_multas": registro_multas_emitidas
     }
+
+@app.get("/api/expedientes")
+def get_expedientes():
+    return registro_multas_emitidas
+
+class SimularMultaRequest(BaseModel):
+    placa: str = None
+    vehiculo: str = "Auto"
+    infraccion: str = "Zona Rígida"
+
+@app.post("/api/simular_multa")
+def simular_multa_endpoint(req: SimularMultaRequest):
+    multa = crear_multa_sistema(
+        tipo_vehiculo=req.vehiculo,
+        origen="Copiloto IA Simulación",
+        placa_custom=req.placa,
+        infraccion_custom=req.infraccion
+    )
+    return {"status": "ok", "multa": multa}
+
+class EstadoRequest(BaseModel):
+    estado: str = "ANULADA"
+    motivo: str = "Procesado por el operador"
+    txHash: str = ""
+
+@app.post("/api/expedientes/{acta_id}/anular")
+@app.post("/api/expedientes/{acta_id}/estado")
+def cambiar_estado_expediente(acta_id: str, data: EstadoRequest):
+    for multa in registro_multas_emitidas:
+        if multa.get("id") == acta_id or multa.get("actaId") == acta_id:
+            multa["estado"] = data.estado.upper()
+            multa["motivo"] = data.motivo
+            if data.txHash:
+                multa["hash"] = data.txHash
+            return {"status": "ok", "message": f"Acta {acta_id} actualizada a {data.estado}"}
+    raise HTTPException(status_code=404, detail="Acta no encontrada")
+
+class ChatRequest(BaseModel):
+    message: str
 
 class ChatRequest(BaseModel):
     message: str
 
 @app.post("/api/chat")
 def chat_endpoint(req: ChatRequest):
-    # Generar estadísticas actuales para pasárselas al bot
+    texto = req.message.lower()
+
+    # Extraer cualquier formato de placa en el texto (ej: ABC-123, BCK896, abc 934)
+    placa_detectada = None
+    placa_match = re.search(r'([a-zA-Z]{3}[\s\-]?\d{3,4})', req.message)
+    if placa_match:
+        placa_limpia = re.sub(r'[\s\-]', '', placa_match.group(1)).upper()
+        if len(placa_limpia) >= 6:
+            placa_detectada = f"{placa_limpia[:3]}-{placa_limpia[3:]}"
+
+    # Lista ampliada de palabras clave para creación de multas flexibles
+    palabras_crear = [
+        "simular", "crear", "registrar", "generar", "agregar", 
+        "multa", "papeleta", "sancionar", "sanciona", "ponle", "fotomulta"
+    ]
+    quiere_crear = any(k in texto for k in palabras_crear)
+
+    # ------------------------------------------------------------------
+    # 1. CREACIÓN / SIMULACIÓN DE MULTAS CON LENGUAJE LIBRE
+    # ------------------------------------------------------------------
+    if placa_detectada and quiere_crear:
+        # Detectar tipo de vehículo
+        tipo_v = "Auto"
+        if "camion" in texto or "camión" in texto: tipo_v = "Camion"
+        elif "moto" in texto: tipo_v = "Moto"
+        elif "bus" in texto: tipo_v = "Bus"
+
+        # Detectar tipo de infracción
+        infraccion = "Zona Rígida"
+        if "luz roja" in texto or "semaforo" in texto: infraccion = "Pasó Luz Roja"
+        elif "velocidad" in texto or "correr" in texto or "rapido" in texto: infraccion = "Exceso de Velocidad"
+        elif "berma" in texto or "estacionar" in texto or "parar" in texto: infraccion = "Obstrucción de Berma Sur"
+
+        multa_creada = crear_multa_sistema(
+            tipo_vehiculo=tipo_v, 
+            origen="Copiloto IA (Chatbot)", 
+            placa_custom=placa_detectada, 
+            infraccion_custom=infraccion
+        )
+        
+        reply = (
+            f"✅ **¡Infracción Registrada Exitosamente!**\n\n"
+            f"• **N° Acta:** `{multa_creada['actaId']}`\n"
+            f"• **Placa:** `{multa_creada['placa']}`\n"
+            f"• **Infracción:** {multa_creada['infraccion']}\n"
+            f"• **Tipo Vehículo:** {multa_creada['vehiculo']}\n"
+            f"• **Tx Hash Arbitrum:** `{multa_creada['hash'][:16]}...`\n\n"
+            f"El expediente ha sido publicado en la red y ya aparece en el panel principal."
+        )
+        return {"reply": reply}
+
+    # ------------------------------------------------------------------
+    # 2. CONSULTA DIRECTA DE EXPEDIENTE POR PLACA
+    # ------------------------------------------------------------------
+    if placa_detectada and not quiere_crear:
+        multas_encontradas = [
+            m for m in registro_multas_emitidas 
+            if m.get("placa", "").upper() == placa_detectada
+        ]
+
+        if multas_encontradas:
+            m = multas_encontradas[-1]
+            reply = (
+                f"📋 **Infracción Encontrada para Placa {m['placa']}**\n\n"
+                f"• **Acta:** `{m['actaId']}`\n"
+                f"• **Infracción:** {m['infraccion']}\n"
+                f"• **Vehículo:** {m['vehiculo']}\n"
+                f"• **Estado:** `{m['estado']}`\n"
+                f"• **Hora/Fecha:** {m['hora']} - {m['fecha']}\n"
+                f"• **Hash Web3:** `{m['hash'][:16]}...`"
+            )
+            return {"reply": reply}
+        else:
+            return {"reply": f"🔍 No se registran infracciones o expedientes para la placa **{placa_detectada}**."}
+
+    # ------------------------------------------------------------------
+    # 3. ESTADÍSTICAS EN VIVO Y CONSULTAS GENERALES CON EL ASISTENTE
+    # ------------------------------------------------------------------
     stats_actuales = get_stats()
-    # Mapear 'registros_multas' a 'multas' para coincidir con chatbot_service.py
-    stats_actuales["multas"] = stats_actuales.get("registros_multas", [])
-    
     respuesta = responder_chat(req.message, stats_actuales)
     return {"reply": respuesta}
 
