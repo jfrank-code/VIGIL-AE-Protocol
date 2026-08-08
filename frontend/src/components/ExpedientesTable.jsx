@@ -154,7 +154,7 @@ export default function ExpedientesTable() {
                   )}
                   {exp.estado !== 'ANULADA' && exp.estado !== 'PAGADA' && (
                     <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold">
-                      <CheckCircle className="w-3 h-3" /> REGISTRADA
+                      <CheckCircle className="w-3 h-3" /> {exp.estado}
                     </span>
                   )}
                 </td>
@@ -172,7 +172,7 @@ export default function ExpedientesTable() {
                   ) : <span className="text-slate-600">N/A</span>}
                 </td>
                 <td className="p-3 text-right flex justify-end gap-2">
-                  {exp.estado === 'REGISTRADA' && (
+                  {(exp.estado === 'REGISTRADA' || exp.estado === 'PENDIENTE') && (
                     <>
                       <button 
                         onClick={() => setSelectedActaPagar(exp)}
