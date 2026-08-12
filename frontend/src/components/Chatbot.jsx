@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { X, Send, Bot, User, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
 
+// Obtener la URL del backend dinámicamente desde Vite
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 export default function Chatbot() {
   const [isOpen, setIsOpen] = useState(true);
   const [inputMessage, setInputMessage] = useState('');
@@ -22,7 +25,7 @@ export default function Chatbot() {
     setLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat', {
+      const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -42,7 +45,7 @@ export default function Chatbot() {
         ...prev,
         {
           sender: 'bot',
-          text: '⚠️ No se pudo conectar con el servidor del Asistente VIGIL-AE. Verifica que el backend esté ejecutándose en la puerta 8000.'
+          text: '⚠️ No se pudo conectar con el servidor del Asistente VIGIL-AE. Verifica el estado del servicio backend.'
         }
       ]);
     } finally {

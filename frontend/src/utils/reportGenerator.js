@@ -2,6 +2,9 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+// Configuración de la URL base API
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 /**
  * Genera el reporte PDF de fiscalización vial VIGIL-AE.
  * 
@@ -17,8 +20,8 @@ export const generatePdfReport = async (statsData = null, multasData = [], panor
   if (!statsData || Object.keys(stats).length === 0 || registros.length === 0) {
     try {
       const [resStats, resExp] = await Promise.all([
-        fetch('http://localhost:8000/api/stats'),
-        fetch('http://localhost:8000/api/expedientes')
+        fetch(`${API_URL}/api/stats`),
+        fetch(`${API_URL}/api/expedientes`)
       ]);
 
       if (resStats.ok && !statsData) {

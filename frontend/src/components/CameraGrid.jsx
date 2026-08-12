@@ -1,6 +1,9 @@
 import React from 'react';
 import { Camera, Eye } from 'lucide-react';
 
+// Obtener la URL del backend dinámicamente
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 export default function CameraGrid() {
   return (
     <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -19,7 +22,7 @@ export default function CameraGrid() {
         {/* Streaming Stream EZVIZ HD */}
         <div className="relative aspect-video w-full bg-slate-950 flex items-center justify-center overflow-hidden">
           <img 
-            src="http://localhost:8000/video_feed_1" 
+            src={`${API_URL}/video_feed_1`} 
             alt="NODO_01 Berma Sur"
             className="w-full h-full object-cover shadow-inner"
             onError={(e) => {
@@ -49,7 +52,7 @@ export default function CameraGrid() {
         {/* Streaming Stream EZVIZ HD */}
         <div className="relative aspect-video w-full bg-slate-950 flex items-center justify-center overflow-hidden">
           <img 
-            src="http://localhost:8000/video_feed_2" 
+            src={`${API_URL}/video_feed_2`} 
             alt="NODO_02 Acceso Carga"
             className="w-full h-full object-cover shadow-inner"
             onError={(e) => {

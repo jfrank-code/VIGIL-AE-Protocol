@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { FileText, Search, Ban, CheckCircle, AlertTriangle, ExternalLink, RefreshCw, X, CreditCard } from 'lucide-react';
 import { anularActaOnChain, pagarActaOnChain } from '../services/web3Service';
 
+// Configuración de la URL base API
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 export default function ExpedientesTable() {
   const [expedientes, setExpedientes] = useState([]);
   const [filter, setFilter] = useState('');
@@ -17,7 +20,7 @@ export default function ExpedientesTable() {
   const fetchExpedientes = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/expedientes');
+      const res = await fetch(`${API_URL}/api/expedientes`);
       if (res.ok) {
         const data = await res.json();
         setExpedientes(data.reverse());
@@ -42,7 +45,7 @@ export default function ExpedientesTable() {
     try {
       const receipt = await anularActaOnChain(selectedActaAnular.actaId, motivoAnulacion);
       
-      await fetch(`http://localhost:8000/api/expedientes/${selectedActaAnular.actaId}/estado`, {
+      await fetch(`${API_URL}/api/expedientes/${selectedActaAnular.actaId}/estado`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estado: 'ANULADA', motivo: motivoAnulacion, txHash: receipt.hash })
@@ -68,7 +71,7 @@ export default function ExpedientesTable() {
     try {
       const receipt = await pagarActaOnChain(selectedActaPagar.actaId);
       
-      await fetch(`http://localhost:8000/api/expedientes/${selectedActaPagar.actaId}/estado`, {
+      await fetch(`${API_URL}/api/expedientes/${selectedActaPagar.actaId}/estado`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ estado: 'PAGADA', motivo: 'Pago Web3 confirmado', txHash: receipt.hash })

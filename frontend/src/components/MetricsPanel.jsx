@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Activity, Clock, ShieldAlert, BarChart3 } from 'lucide-react';
 
+// Configuración de la URL base API
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 export default function MetricsPanel() {
   const [stats, setStats] = useState({
     tiempo_monitoreo: 0,
@@ -12,7 +15,7 @@ export default function MetricsPanel() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/stats');
+        const res = await fetch(`${API_URL}/api/stats`);
         if (res.ok) {
           const data = await res.json();
           setStats(data);

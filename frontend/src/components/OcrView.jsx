@@ -10,7 +10,8 @@ import {
   CheckCircle2
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000';
+// Configuración de la URL base API mediante variable de entorno
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const ANPR_VIDEO_URL = `${API_BASE}/video_feed_anpr`;
 const ANPR_STATS_URL = `${API_BASE}/api/anpr/stats`;
 
@@ -241,7 +242,7 @@ export default function OcrView() {
                     STREAM ANPR NO DISPONIBLE
                   </p>
                   <p className="text-slate-500 text-xs mt-1 font-mono">
-                    Verifica que el backend esté ejecutándose en localhost:8000
+                    Verifica la conexión con la API en {API_BASE}
                   </p>
                 </div>
               )}

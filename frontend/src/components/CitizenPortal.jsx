@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { Search, ExternalLink, ShieldCheck, AlertTriangle, CheckCircle, FileText, RefreshCw } from 'lucide-react';
 
+// Obtener la URL del backend dinámicamente desde Vite
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 export default function CitizenPortal() {
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -16,7 +19,7 @@ export default function CitizenPortal() {
     setSearched(true);
 
     try {
-      const res = await fetch('http://localhost:8000/api/expedientes');
+      const res = await fetch(`${API_URL}/api/expedientes`);
       if (res.ok) {
         const data = await res.json();
         

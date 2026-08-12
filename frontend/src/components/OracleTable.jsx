@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, ExternalLink, Database } from 'lucide-react';
 
+// Configuración de la URL base API
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 export default function OracleTable() {
   const [logs, setLogs] = useState([]);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/stats');
+        const res = await fetch(`${API_URL}/api/stats`);
         if (!res.ok) return;
         const data = await res.json();
         
