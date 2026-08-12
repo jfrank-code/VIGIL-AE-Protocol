@@ -7,7 +7,7 @@ export default function Header({ searchPlate, setSearchPlate, activeTab, setActi
   const navigate = useNavigate();
 
   return (
-    <header className="flex flex-col md:flex-row justify-between items-start md:items-center pb-6 mb-6 border-b border-slate-800 gap-4">
+    <header className="sticky top-0 z-50 backdrop-blur-md bg-slate-950/80 flex flex-col md:flex-row justify-between items-start md:items-center pb-6 pt-4 mb-6 border-b border-slate-800 gap-4">
       {/* TÍTULO Y BOTÓN VOLVER */}
       <div className="flex items-center gap-3">
         <button

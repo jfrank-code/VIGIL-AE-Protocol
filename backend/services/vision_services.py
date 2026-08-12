@@ -9,6 +9,8 @@ print("Cargando YOLOv8 Nano...")
 model = YOLO("yolov8n.pt")
 model.fuse()
 
+model_anpr = YOLO("yolov8n.pt")
+
 print("Cargando Algoritmo Global PaddleOCR...")
 try:
     logging.getLogger("ppocr").setLevel(logging.ERROR)

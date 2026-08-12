@@ -12,13 +12,20 @@ import CitizenPortal from './components/CitizenPortal';
 import Chatbot from './components/Chatbot';
 import { ArrowLeft } from 'lucide-react';
 
+// NUEVA IMPORTACIÓN: Componentes del Piloto VMT y Escalabilidad
+import PilotDisclaimerModal from './components/PilotDisclaimerModal';
+import ScalingRoadmap from './components/ScalingRoadmap';
+
 // Contenedor Portal Municipal
 function MunicipalDashboard() {
   const [searchPlate, setSearchPlate] = useState('');
   const [activeTab, setActiveTab] = useState('cameras');
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 lg:p-6 font-sans">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 lg:p-6 font-sans relative">
+      {/* Modal de Aviso Ético y Piloto VMT */}
+      <PilotDisclaimerModal />
+
       <div className="max-w-7xl mx-auto space-y-6">
         <Header 
           searchPlate={searchPlate} 
@@ -26,6 +33,9 @@ function MunicipalDashboard() {
           activeTab={activeTab} 
           setActiveTab={setActiveTab} 
         />
+
+        {/* Tarjeta Visual de Piloto vs. Escalabilidad Municipal */}
+        <ScalingRoadmap />
 
         {activeTab === 'cameras' && (
           <div className="space-y-6 animate-fadeIn">

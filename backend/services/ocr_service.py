@@ -1,99 +1,70 @@
 import cv2
-import base64
-import numpy as np
+import re
+from hyperlpr3 import LicensePlateCatcher
 
-try:
-    import hyperlpr3 as lpr
-    recognizer = lpr.LicensePlateCatcher(detect_level=lpr.DETECT_LEVEL_HIGH)
-    HYPERLPR_DISPONIBLE = True
-except Exception as e:
-    print(f"⚠️ HyperLPR3 no cargado, se usará modo simulación/OCR fallback: {e}")
-    HYPERLPR_DISPONIBLE = False
+# 1. Inicializar el lector una sola vez en el arranque de la API
+lector_placas = LicensePlateCatcher()
 
-def recortar_y_convertir_base64(frame, box):
+def limpiar_patente_hyper(texto_sucio):
     """
-    Recorta la región del vehículo o placa especificada por box (x1, y1, x2, y2)
-    y la convierte a una cadena de imagen codificada en Base64 para React.
+    Función de limpieza exacta del script de Tkinter
+    """
+    if not texto_sucio:
+        return "NODETECTADA"
+    texto = texto_sucio.replace('???', '-').replace('2', '-')
+    texto = re.sub(r'[^a-zA-Z0-9\-]', '', texto).upper()
+    return texto
+
+def procesar_ocr_exacto_tkinter(recorte_vehiculo):
+    """
+    Réplica exacta de la lógica que funciona en el PDF subido
     """
     try:
-        if frame is None or frame.size == 0:
-            return None
+        alto, ancho = recorte_vehiculo.shape[:2]
+        if alto == 0 or ancho == 0:
+            return None, None
 
-        # Asegurar conversión segura desde arreglos numpy/torch
-        if hasattr(box, 'tolist'):
-            box = box.tolist()
+        # --- RECORTE 1: Enfoque directo en el área baja del parachoques ---
+        recorte_patente_puro = recorte_vehiculo[
+            int(alto * 0.50):int(alto * 0.95), 
+            int(ancho * 0.10):int(ancho * 0.90)
+        ]
 
-        x1, y1, x2, y2 = map(int, box)
-        h, w, _ = frame.shape
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(w, x2), min(h, y2)
+        if recorte_patente_puro.size == 0:
+            recorte_patente_puro = recorte_vehiculo
 
-        if x2 <= x1 or y2 <= y1:
-            return None
+        # Intento 1: Pipeline sobre la zona recortada de la placa
+        resultados = lector_placas.pipeline(recorte_patente_puro)
+        placa_final = "NODETECTADA"
 
-        crop = frame[y1:y2, x1:x2]
-        if crop.size == 0:
-            return None
+        if resultados and len(resultados) > 0:
+            res_principal = resultados[0]
+            if isinstance(res_principal, (list, tuple)):
+                placa_final = str(res_principal[0]) if len(res_principal) > 0 else "NODETECTADA"
+            elif isinstance(res_principal, dict):
+                placa_final = res_principal.get('text', res_principal.get('code', "NODETECTADA"))
 
-        crop_resized = cv2.resize(crop, (180, 100))
-        _, buffer = cv2.imencode('.jpg', crop_resized, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-        base64_str = f"data:image/jpeg;base64,{base64.b64encode(buffer).decode('utf-8')}"
-        return base64_str
+        # --- FALLBACK: Si no detectó en la zona reducida, probar en el carro completo ---
+        if placa_final == "NODETECTADA" or len(placa_final) < 3:
+            resultados_alt = lector_placas.pipeline(recorte_vehiculo)
+            if resultados_alt and len(resultados_alt) > 0:
+                res_alt = resultados_alt[0]
+                if isinstance(res_alt, (list, tuple)):
+                    placa_final = str(res_alt[0])
+                elif isinstance(res_alt, dict):
+                    placa_final = res_alt.get('text', "NODETECTADA")
+
+        # Limpiar caracteres ruidosos
+        placa_final = limpiar_patente_hyper(placa_final)
+
+        # Redimensionar la imagen recortada para guardarla/enviarla al frontend (igual que Tkinter)
+        foto_display = cv2.resize(recorte_patente_puro, (250, 95))
+
+        if placa_final != "NODETECTADA":
+            return placa_final, foto_display
+            
+        return None, foto_display
+
     except Exception as e:
-        print(f"Error al convertir recorte a Base64: {e}")
-        return None
-
-def reconocer_placa_hyperlpr3(crop_img):
-    """
-    Procesa un recorte de imagen con HyperLPR3 para extraer la placa y su nivel de confianza.
-    """
-    if not HYPERLPR_DISPONIBLE or crop_img is None or crop_img.size == 0:
-        return None, 0.0
-
-    try:
-        results = recognizer.parse_plate(crop_img)
-        if results and len(results) > 0:
-            placa_texto = results[0][0]
-            confianza = float(results[0][1])
-            return placa_texto, confianza
-    except Exception as e:
-        print(f"Error en HyperLPR3: {e}")
-
-    return None, 0.0
-
-def recortar_y_leer_placa(frame, box, ocr_engine=None):
-    """
-    Función de compatibilidad con fallback si no hay HyperLPR3 activo.
-    """
-    if frame is None or frame.size == 0:
-        return None
-
-    if hasattr(box, 'tolist'):
-        box = box.tolist()
-
-    x1, y1, x2, y2 = map(int, box)
-    h, w, _ = frame.shape
-    x1, y1 = max(0, x1), max(0, y1)
-    x2, y2 = min(w, x2), min(h, y2)
-
-    if x2 <= x1 or y2 <= y1:
-        return None
-
-    crop = frame[y1:y2, x1:x2]
-    if crop.size == 0:
-        return None
-
-    placa_hyper, conf = reconocer_placa_hyperlpr3(crop)
-    if placa_hyper and conf > 0.6:
-        return placa_hyper
-
-    if ocr_engine is not None:
-        try:
-            resultado = ocr_engine.ocr(crop, cls=False)
-            if resultado and resultado[0]:
-                texto_detectado = resultado[0][0][1][0]
-                return texto_detectado.upper().replace(" ", "").replace("-", "")
-        except Exception as e:
-            print(f"Error en extracción OCR alternativo: {e}")
-
-    return None
+        print(f"Error procesando OCR: {e}")
+        return None, None
