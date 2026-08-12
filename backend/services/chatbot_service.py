@@ -1,106 +1,58 @@
-import re
+import os
+from openai import OpenAI
 
-SYSTEM_PROMPT = """
-Eres Copiloto VIGIL-AE, el asistente virtual del Centro de Control Vial Portuario.
+def responder_chat(mensaje_usuario: str, stats_actuales: dict) -> str:
+    """Respuesta local/offline por defecto en caso de que falle la IA o no haya internet."""
+    saturacion = stats_actuales.get('saturacion_berma', 0)
+    total = stats_actuales.get('conteo_total', 0)
+    return (
+        f"🤖 **[Modo Local VIGIL-AE]**\n"
+        f"Actualmente hay **{total}** vehículos registrados y la saturación de la berma es del **{saturacion}%**."
+    )
 
-TUS INSTRUCCIONES ESTRICTAS:
-- Responde únicamente consultas relacionadas con las métricas viales del sistema, estado de cámaras, tipos de vehículos detectados, actas emitidas e inmutabilidad en blockchain.
-- Rechaza amablemente cualquier pregunta no relacionada con la plataforma respondiendo:
-  "Solo puedo responder consultas operativas sobre el sistema de fiscalización VIGIL-AE y métricas viales en tiempo real."
+def responder_chat_con_ia(mensaje_usuario: str, stats_actuales: dict) -> str:
+    """Llama a la API de OpenAI inyectando el estado real del sistema."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    
+    # Si no hay clave API configurada, usa la respuesta local sin romper el servidor
+    if not api_key:
+        return responder_chat(mensaje_usuario, stats_actuales)
 
-DATOS EN TIEMPO REAL DEL SISTEMA:
-{contexto_sistema}
-"""
+    multas = stats_actuales.get('registros_multas') or []
 
-def extraer_placa_texto(texto: str):
-    """Detecta formatos de placa flexibles como ABC-123, ABC123, ABC 123, BCK-8964."""
-    patron = r'([A-Za-z]{3}[\s\-]?\d{3,4})'
-    coincidencia = re.search(patron, texto)
-    if coincidencia:
-        placa_limpia = re.sub(r'[\s\-]', '', coincidencia.group(1)).upper()
-        if len(placa_limpia) >= 6:
-            return f"{placa_limpia[:3]}-{placa_limpia[3:]}"
-    return None
+    system_prompt = f"""
+    Eres el Copiloto VIGIL-AE, un asistente experto para el Centro de Control Vial Portuario.
+    Tu objetivo es responder de manera fluida, natural, profesional y detallada al operador.
 
-def responder_chat(mensaje_usuario, stats_actuales):
+    MÉTRICAS VIALES EN TIEMPO REAL:
+    - Flujo total de vehículos: {stats_actuales.get('conteo_total', 0)}
+    - Autos: {stats_actuales.get('autos', 0)} | Camiones: {stats_actuales.get('camiones', 0)}
+    - Motos: {stats_actuales.get('motos', 0)} | Buses: {stats_actuales.get('buses', 0)}
+    - Vehículos activos en cámara: {stats_actuales.get('vehiculos_activos', 0)}
+    - Saturación de la berma: {stats_actuales.get('saturacion_berma', 0)}%
+    - Pérdida de capacidad vial: {stats_actuales.get('perdida_capacidad', 0)}%
+    - Tiempo total de obstrucción: {stats_actuales.get('tiempo_total_obstruido', 0)} min
+    - Total de actas en sistema: {len(multas)}
+
+    INSTRUCCIONES:
+    1. Si te piden analizar las estadísticas, ofrece un análisis interpretativo útil.
+    2. Mantén un tono natural, conversacional y colaborativo.
+    3. Si la consulta no tiene relación con el sistema o métricas viales, indica amablemente que solo atiendes la fiscalización VIGIL-AE.
     """
-    Recibe la consulta del usuario y el diccionario de métricas en tiempo real.
-    """
+
     try:
-        msg = mensaje_usuario.strip().lower()
-        
-        # Filtro de seguridad para evitar desvíos fuera del tema
-        palabras_clave_sistema = [
-            "camara", "cam", "multa", "acta", "placa", "berma", "obstruccion", 
-            "vehiculo", "blockchain", "saturacion", "vigil", "hola", "stats", 
-            "estadistica", "estadisticas", "resumen", "total", "reporte", "cuantas", 
-            "cuantos", "en vivo", "sancion", "papeleta", "fotomulta", "auto", "carro", "bus", "camion", "moto"
-        ]
-        
-        if not any(kw in msg for kw in palabras_clave_sistema):
-            return "Solo puedo responder consultas operativas sobre el sistema de fiscalización VIGIL-AE y métricas viales en tiempo real."
-
-        # ------------------------------------------------------------------
-        # 1. CONSULTA DE ESTADÍSTICAS EN VIVO
-        # ------------------------------------------------------------------
-        palabras_stats = ["estadistica", "estadisticas", "resumen", "total", "reporte", "cuantas", "cuantos", "en vivo", "metricas"]
-        if any(p in msg for p in palabras_stats):
-            multas = stats_actuales.get("registros_multas", [])
-            total_multas = len(multas)
-            
-            # Conteo de estados
-            registradas = sum(1 for m in multas if m.get("estado", "REGISTRADA") == "REGISTRADA")
-            pagadas = sum(1 for m in multas if m.get("estado") == "PAGADA")
-            anuladas = sum(1 for m in multas if m.get("estado") == "ANULADA")
-
-            autos = stats_actuales.get("autos", 0)
-            camiones = stats_actuales.get("camiones", 0)
-            motos = stats_actuales.get("motos", 0)
-            buses = stats_actuales.get("buses", 0)
-            conteo_total_v = stats_actuales.get("conteo_total", 0)
-
-            sat = stats_actuales.get("saturacion_berma", 0.0)
-            obs = stats_actuales.get("tiempo_total_obstruido", 0.0)
-
-            return (
-                f"📊 **Panel de Estadísticas en Vivo (VIGIL-AE):**\n\n"
-                f"🚘 **Flujo Vehicular Detectado:** `{conteo_total_v}` vehículos\n"
-                f"  • Autos: `{autos}` | Camiones: `{camiones}`\n"
-                f"  • Motos: `{motos}` | Buses: `{buses}`\n\n"
-                f"📋 **Expedientes de Infracción:** `{total_multas}`\n"
-                f"  • 🔴 Pendientes/Registradas: `{registradas}`\n"
-                f"  • 🟢 Pagadas: `{pagadas}`\n"
-                f"  • ⚪ Anuladas: `{anuladas}`\n\n"
-                f"⚠️ **Estado del Carril/Berma:**\n"
-                f"  • Saturación: `{sat}%` | Tiempo obstruido: `{obs} min`\n\n"
-                f"🌐 *Sincronizado inmutablemente con la red Arbitrum Sepolia.*"
-            )
-
-        # ------------------------------------------------------------------
-        # 2. CONSULTA DE ESTADO DE VÍAS / BERMA
-        # ------------------------------------------------------------------
-        if "estado" in msg or "berma" in msg or "saturacion" in msg or "obstruccion" in msg:
-            sat = stats_actuales.get("saturacion_berma", 0.0)
-            obs = stats_actuales.get("tiempo_total_obstruido", 0.0)
-            perdida = stats_actuales.get("perdida_capacidad", 0.0)
-            return (
-                f"📍 **Estado Operativo de las Vías:**\n\n"
-                f"• **Saturación actual de la berma:** `{sat}%`\n"
-                f"• **Pérdida de capacidad vial:** `{perdida}%`\n"
-                f"• **Tiempo acumulado de obstrucción:** `{obs} min`"
-            )
-
-        # ------------------------------------------------------------------
-        # 3. SALUDO O MENSAJE GENERAL
-        # ------------------------------------------------------------------
-        return (
-            "Hola, soy el Copiloto VIGIL-AE 🤖.\n\n"
-            "Puedes pedirme:\n"
-            "• *'Dame las estadísticas en vivo'*\n"
-            "• *'Ponle una papeleta al carro ABC-934 por exceso de velocidad'*\n"
-            "• *'¿Cuál es el estado de la berma?'*\n"
-            "• Consultar el expediente de cualquier placa registrada."
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": mensaje_usuario}
+            ],
+            temperature=0.7,
+            timeout=8.0
         )
+        return response.choices[0].message.content
 
     except Exception as e:
-        return f"Error procesando la consulta: {str(e)}"
+        print(f"⚠️ Error en OpenAI API ({e}). Usando fallback local...")
+        return responder_chat(mensaje_usuario, stats_actuales)

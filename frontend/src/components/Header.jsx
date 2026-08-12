@@ -84,13 +84,6 @@ export default function Header({ searchPlate, setSearchPlate, activeTab, setActi
         {/* Buscador de Placas */}
         <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-1.5 rounded-lg">
           <Search className="w-4 h-4 text-slate-400 ml-1" />
-          <input 
-            type="text" 
-            value={searchPlate}
-            onChange={(e) => setSearchPlate(e.target.value.toUpperCase())}
-            placeholder="Buscar Placa..."
-            className="bg-transparent text-xs focus:outline-none text-blue-300 font-mono uppercase w-28 placeholder:text-slate-600"
-          />
         </div>
       </div>
     </header>
