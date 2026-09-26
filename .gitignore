@@ -1,0 +1,32 @@
+# === Python / Backend ===
+backend/venv/
+venv/
+backend/.env
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+*.egg-info/
+
+# === Node / Frontend ===
+node_modules/
+frontend/node_modules/
+dist/
+dist-ssr/
+build/
+.vite/
+
+# === VS Code / Sistema ===
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# === Logs ===
+*.log
+npm-debug.log*
