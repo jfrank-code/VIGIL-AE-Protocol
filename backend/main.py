@@ -16,6 +16,7 @@ import numpy as np
 import threading
 import queue
 import re
+from urllib.parse import urlparse
 import asyncio  # ASYNCIO AGREGADO
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException
@@ -120,47 +121,163 @@ def obtener_enlace_video(canal):
     return None
 
 def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
+    """
+    Obtiene el HLS de EZVIZ y lo convierte en frames para YOLO.
+
+    Esta versión mantiene el comportamiento original, pero añade diagnóstico
+    explícito para Railway. Si local funciona y Railway no, los logs permiten
+    distinguir entre:
+      1) fallo al obtener la URL de EZVIZ,
+      2) fallo al abrir HLS con OpenCV/FFmpeg,
+      3) fallo al leer frames una vez abierto el stream.
+    """
     global streaming_activo, cam1_online
 
+    intentos_sin_url = 0
+    intentos_no_abre = 0
+    lecturas_fallidas = 0
+    frames_recibidos = 0
+    ultimo_log_frame = 0.0
+
+    print(f"🎥 [{nombre_cam}] Hilo de captura EZVIZ iniciado. Canal={canal_no}")
+    print(f"🎥 [{nombre_cam}] OpenCV version: {cv2.__version__}")
+    print(f"🎥 [{nombre_cam}] CAP_FFMPEG disponible: {hasattr(cv2, 'CAP_FFMPEG')}")
+
     while streaming_activo:
-        url_actual = obtener_enlace_video(canal_no)
+        try:
+            url_actual = obtener_enlace_video(canal_no)
 
-        if not url_actual:
-            cam1_online = False
-            time.sleep(3.0)
-            continue
-
-        cap = cv2.VideoCapture(url_actual, cv2.CAP_FFMPEG)
-        if not cap.isOpened():
-            cam1_online = False
-            time.sleep(2.0)
-            continue
-
-        # Keep the OpenCV-internal buffer at 1 frame too, so we are always
-        # reading the newest frame the camera has sent, never a stale one.
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-        cam1_online = True
-
-        while streaming_activo:
-            ret, frame = cap.read()
-            if not ret or frame is None or np.sum(frame) == 0:
+            if not url_actual:
+                intentos_sin_url += 1
                 cam1_online = False
-                break
 
-            while not cola_destino.empty():
-                try:
-                    cola_destino.get_nowait()
-                except queue.Empty:
-                    break
+                if intentos_sin_url <= 3 or intentos_sin_url % 10 == 0:
+                    print(
+                        f"❌ [{nombre_cam}] EZVIZ no devolvió URL de streaming "
+                        f"(intento {intentos_sin_url})."
+                    )
 
+                time.sleep(3.0)
+                continue
+
+            intentos_sin_url = 0
+
+            # Nunca imprimimos la URL HLS completa porque puede contener
+            # parámetros/token temporales. Solo mostramos host y path.
             try:
-                cola_destino.put(frame, timeout=0.01)
-            except queue.Full:
+                parsed_url = urlparse(url_actual)
+                host = parsed_url.netloc or "host-desconocido"
+                path = parsed_url.path or "/"
+                print(
+                    f"🔗 [{nombre_cam}] URL EZVIZ obtenida: "
+                    f"https://{host}{path}"
+                )
+            except Exception:
+                print(f"🔗 [{nombre_cam}] URL EZVIZ obtenida correctamente.")
+
+            print(
+                f"🎬 [{nombre_cam}] Intentando abrir HLS con "
+                f"OpenCV/FFmpeg..."
+            )
+
+            cap = cv2.VideoCapture(url_actual, cv2.CAP_FFMPEG)
+
+            if not cap.isOpened():
+                intentos_no_abre += 1
+                cam1_online = False
+
+                backend_name = "desconocido"
+                try:
+                    backend_name = cap.getBackendName()
+                except Exception:
+                    pass
+
+                if intentos_no_abre <= 3 or intentos_no_abre % 10 == 0:
+                    print(
+                        f"❌ [{nombre_cam}] OpenCV NO pudo abrir el stream EZVIZ. "
+                        f"Intento={intentos_no_abre}, backend={backend_name}"
+                    )
+
+                cap.release()
+                time.sleep(2.0)
+                continue
+
+            intentos_no_abre = 0
+
+            backend_name = "desconocido"
+            try:
+                backend_name = cap.getBackendName()
+            except Exception:
                 pass
 
-        cap.release()
-        time.sleep(1.0)
+            print(
+                f"✅ [{nombre_cam}] OpenCV abrió el stream EZVIZ. "
+                f"Backend={backend_name}"
+            )
+
+            # Keep the OpenCV-internal buffer at 1 frame too, so we are always
+            # reading the newest frame the camera has sent, never a stale one.
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+            cam1_online = True
+            lecturas_fallidas = 0
+
+            while streaming_activo:
+                ret, frame = cap.read()
+
+                if not ret or frame is None or np.sum(frame) == 0:
+                    lecturas_fallidas += 1
+                    cam1_online = False
+
+                    if lecturas_fallidas <= 3 or lecturas_fallidas % 10 == 0:
+                        print(
+                            f"❌ [{nombre_cam}] cap.read() no recibió un frame. "
+                            f"Lectura fallida={lecturas_fallidas}"
+                        )
+
+                    break
+
+                # El stream está realmente entregando frames.
+                frames_recibidos += 1
+                cam1_online = True
+
+                # Loguear solo cada 5 segundos para no inundar Railway Logs.
+                ahora = time.time()
+                if ahora - ultimo_log_frame >= 5.0:
+                    print(
+                        f"📹 [{nombre_cam}] FRAME RECIBIDO correctamente: "
+                        f"shape={frame.shape}, frames={frames_recibidos}"
+                    )
+                    ultimo_log_frame = ahora
+
+                while not cola_destino.empty():
+                    try:
+                        cola_destino.get_nowait()
+                    except queue.Empty:
+                        break
+
+                try:
+                    cola_destino.put(frame, timeout=0.01)
+                except queue.Full:
+                    pass
+
+            cap.release()
+
+            if streaming_activo:
+                print(
+                    f"🔄 [{nombre_cam}] Stream interrumpido. "
+                    f"Reintentando obtener una nueva URL EZVIZ..."
+                )
+
+            time.sleep(1.0)
+
+        except Exception as e:
+            cam1_online = False
+            print(
+                f"💥 [{nombre_cam}] Excepción inesperada en captura EZVIZ: "
+                f"{type(e).__name__}: {e}"
+            )
+            time.sleep(3.0)
 
 # Only Camera 1 (channel 1 / "South Shoulder") is wired up. Camera 2 was
 # removed: the EZVIZ channel-2 feed was unreliable in testing and doubling
@@ -486,6 +603,18 @@ async def stream_camara_1():
 @app.get("/video_feed_1")
 async def video_feed_1():
     return StreamingResponse(stream_camara_1(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+@app.get("/api/camera/status")
+def get_camera_status():
+    """Estado técnico de la captura EZVIZ para diagnóstico del despliegue."""
+    return {
+        "camera": "Camara 1 / South Shoulder",
+        "channel": 1,
+        "online": cam1_online,
+        "streaming_active": streaming_activo,
+        "queue_size": cola_frames_cam1.qsize(),
+        "opencv_version": cv2.__version__,
+    }
 
 @app.get("/api/anpr/stats")
 def get_anpr_stats():
