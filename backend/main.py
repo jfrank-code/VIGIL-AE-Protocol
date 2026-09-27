@@ -83,7 +83,7 @@ def obtener_nuevo_access_token():
     if not app_key or not app_secret:
         return None
     try:
-        url = "https://open.ezviz.com/api/lcn/token/get"
+        url = "https://open.ezvizlife.com/api/lcn/token/get"
         res = requests.post(url, data={'appKey': app_key, 'appSecret': app_secret}, timeout=4.0).json()
         if res.get("code") == "200":
             nuevo_token = res["data"]["accessToken"]
