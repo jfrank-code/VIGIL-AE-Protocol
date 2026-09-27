@@ -116,89 +116,258 @@ def obtener_enlace_video(canal):
     }
 
     try:
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("🔎 DIAGNÓSTICO EZVIZ")
         print(f"🌐 API_URL: {API_URL}")
         print(f"📹 Device: {SERIAL_CAMARA}")
         print(f"📡 Canal: {canal}")
-        print(f"🔑 Token presente: {'SI' if token_actual else 'NO'}")
-        print(f"🔐 Token SHA256: {hashlib.sha256(token_actual.encode()).hexdigest()}")
+
+        # =========================================================
+        # DEBUG DEL TOKEN
+        # =========================================================
+        print("🔐 TOKEN DEBUG")
+
+        print(
+            "📏 Longitud:",
+            len(token_actual)
+        )
+
+        print(
+            "🔑 Inicio:",
+            token_actual[:8]
+        )
+
+        print(
+            "🔚 Final:",
+            token_actual[-8:]
+        )
+
+        print(
+            "🔐 SHA256:",
+            hashlib.sha256(
+                token_actual.encode()
+            ).hexdigest()
+        )
+
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+        # =========================================================
+        # PETICIÓN EXACTA A EZVIZ
+        # =========================================================
+
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+
+        print("📤 ENVIANDO PETICIÓN A EZVIZ...")
+        print("📤 Método: POST")
+        print("📤 Device:", payload["deviceSerial"])
+        print("📤 Canal:", payload["channelNo"])
+        print("📤 Protocol:", payload["protocol"])
+        print("📤 Quality:", payload["quality"])
+        print("📤 Token length:", len(payload["accessToken"]))
+        print(
+            "📤 Token SHA256:",
+            hashlib.sha256(
+                payload["accessToken"].encode()
+            ).hexdigest()
+        )
+        print("📤 Headers:", headers)
 
         response = requests.post(
             API_URL,
             data=payload,
-            timeout=10.0
+            headers=headers,
+            timeout=15.0
         )
 
-        print(f"📥 HTTP Status: {response.status_code}")
-        print(f"📥 Content-Type: {response.headers.get('content-type')}")
-        print(f"📥 Respuesta EZVIZ: {response.text[:2000]}")
+        # =========================================================
+        # RESPUESTA EZVIZ
+        # =========================================================
+
+        print("📥 HTTP Status:", response.status_code)
+        print(
+            "📥 Content-Type:",
+            response.headers.get("content-type")
+        )
+
+        print(
+            "📥 Respuesta EZVIZ:",
+            response.text[:2000]
+        )
+
+        # =========================================================
+        # VALIDAR HTTP
+        # =========================================================
 
         if not response.ok:
-            print("❌ EZVIZ respondió con HTTP diferente de 200")
+            print(
+                "❌ EZVIZ respondió HTTP:",
+                response.status_code
+            )
+
+            print(
+                "❌ Headers respuesta:",
+                dict(response.headers)
+            )
+
             return None
+
+        # =========================================================
+        # CONVERTIR JSON
+        # =========================================================
 
         try:
             res = response.json()
+
         except Exception as json_error:
-            print(f"❌ EZVIZ NO devolvió JSON: {json_error}")
+
+            print(
+                "❌ EZVIZ NO devolvió JSON:",
+                json_error
+            )
+
+            print(
+                "📄 Respuesta:",
+                response.text[:2000]
+            )
+
             return None
 
-        print(f"📦 JSON EZVIZ: {res}")
+        print("📦 JSON EZVIZ:", res)
 
-        code = str(res.get("code", ""))
+        code = str(
+            res.get("code", "")
+        )
 
         # =========================================================
         # ÉXITO
         # =========================================================
+
         if code == "200":
-            data = res.get("data", {})
-            url = data.get("url")
+
+            data = res.get(
+                "data",
+                {}
+            )
+
+            url = data.get(
+                "url"
+            )
 
             if url:
+
+                print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 print("✅ EZVIZ ENTREGÓ URL DE STREAMING")
-                print(f"🎥 URL: {url[:250]}...")
-                print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                print(
+                    "🎥 URL:",
+                    url[:250],
+                    "..."
+                )
+                print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
                 return url
 
-            print("❌ EZVIZ respondió code=200 pero no entregó data.url")
-            print(f"📦 Data recibida: {data}")
-            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            print(
+                "❌ EZVIZ respondió code=200 pero no entregó data.url"
+            )
+
+            print(
+                "📦 Data:",
+                data
+            )
+
             return None
 
         # =========================================================
-        # TOKEN INVÁLIDO
+        # ERROR 10002
         # =========================================================
+
         if code == "10002":
-            print("❌ EZVIZ rechazó el Access Token.")
-            print("❌ Código: 10002")
-            print("❌ Mensaje:", res.get("msg"))
-            print("⚠️ NO se intentará renovar automáticamente el token.")
-            print("⚠️ El token recibido por Railway coincide con el configurado.")
-            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            print("❌ EZVIZ RECHAZÓ EL ACCESS TOKEN")
+            print("❌ Código:", code)
+            print(
+                "❌ Mensaje:",
+                res.get("msg")
+            )
+
+            print("🔐 Token utilizado:")
+            print(
+                "   Longitud:",
+                len(token_actual)
+            )
+
+            print(
+                "   Inicio:",
+                token_actual[:8]
+            )
+
+            print(
+                "   Final:",
+                token_actual[-8:]
+            )
+
+            print(
+                "   SHA256:",
+                hashlib.sha256(
+                    token_actual.encode()
+                ).hexdigest()
+            )
+
+            print("⚠️ NO se renovará automáticamente.")
+            print("⚠️ Esta prueba utiliza exactamente el token de Railway.")
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
             return None
 
         # =========================================================
-        # OTRO ERROR
+        # OTRO ERROR EZVIZ
         # =========================================================
+
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("❌ EZVIZ NO entregó URL de streaming")
-        print(f"❌ Código EZVIZ: {code}")
-        print(f"❌ Mensaje EZVIZ: {res.get('msg')}")
-        print(f"📦 Respuesta completa: {res}")
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("❌ Código:", code)
+        print(
+            "❌ Mensaje:",
+            res.get("msg")
+        )
+        print(
+            "📦 Respuesta completa:",
+            res
+        )
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         return None
 
+    # =============================================================
+    # ERRORES DE RED
+    # =============================================================
+
     except requests.exceptions.Timeout:
+
         print("❌ Timeout conectando con EZVIZ")
         return None
 
     except requests.exceptions.ConnectionError as e:
-        print(f"❌ Error de conexión con EZVIZ: {e}")
+
+        print(
+            "❌ Error de conexión con EZVIZ:",
+            e
+        )
+
         return None
 
     except Exception as e:
-        print(f"❌ Error inesperado EZVIZ: {type(e).__name__}: {e}")
+
+        print(
+            f"❌ Error inesperado EZVIZ: "
+            f"{type(e).__name__}: {e}"
+        )
+
         return None
 
 def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
