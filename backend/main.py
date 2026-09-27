@@ -123,7 +123,7 @@ def obtener_enlace_video(canal):
         print(f"📡 Canal: {canal}")
 
         # =========================================================
-        # DEBUG DEL TOKEN
+        # DEBUG DEL ACCESS TOKEN
         # =========================================================
         print("🔐 TOKEN DEBUG")
 
@@ -152,9 +152,8 @@ def obtener_enlace_video(canal):
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         # =========================================================
-        # PETICIÓN EXACTA A EZVIZ
+        # HEADERS
         # =========================================================
-
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Accept": "application/json",
@@ -168,14 +167,37 @@ def obtener_enlace_video(canal):
         print("📤 Protocol:", payload["protocol"])
         print("📤 Quality:", payload["quality"])
         print("📤 Token length:", len(payload["accessToken"]))
+
         print(
             "📤 Token SHA256:",
             hashlib.sha256(
                 payload["accessToken"].encode()
             ).hexdigest()
         )
+
         print("📤 Headers:", headers)
 
+        # =========================================================
+        # IP PÚBLICA DE RAILWAY
+        # =========================================================
+        try:
+            ip_response = requests.get(
+                "https://api.ipify.org?format=json",
+                timeout=10
+            )
+
+            print("🌍 IP PÚBLICA RAILWAY:")
+            print(ip_response.text)
+
+        except Exception as e:
+            print(
+                "❌ No se pudo obtener IP pública:",
+                e
+            )
+
+        # =========================================================
+        # PETICIÓN A EZVIZ
+        # =========================================================
         response = requests.post(
             API_URL,
             data=payload,
@@ -186,8 +208,11 @@ def obtener_enlace_video(canal):
         # =========================================================
         # RESPUESTA EZVIZ
         # =========================================================
+        print(
+            "📥 HTTP Status:",
+            response.status_code
+        )
 
-        print("📥 HTTP Status:", response.status_code)
         print(
             "📥 Content-Type:",
             response.headers.get("content-type")
@@ -201,8 +226,8 @@ def obtener_enlace_video(canal):
         # =========================================================
         # VALIDAR HTTP
         # =========================================================
-
         if not response.ok:
+
             print(
                 "❌ EZVIZ respondió HTTP:",
                 response.status_code
@@ -218,7 +243,6 @@ def obtener_enlace_video(canal):
         # =========================================================
         # CONVERTIR JSON
         # =========================================================
-
         try:
             res = response.json()
 
@@ -236,7 +260,10 @@ def obtener_enlace_video(canal):
 
             return None
 
-        print("📦 JSON EZVIZ:", res)
+        print(
+            "📦 JSON EZVIZ:",
+            res
+        )
 
         code = str(
             res.get("code", "")
@@ -245,7 +272,6 @@ def obtener_enlace_video(canal):
         # =========================================================
         # ÉXITO
         # =========================================================
-
         if code == "200":
 
             data = res.get(
@@ -261,11 +287,13 @@ def obtener_enlace_video(canal):
 
                 print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 print("✅ EZVIZ ENTREGÓ URL DE STREAMING")
+
                 print(
                     "🎥 URL:",
                     url[:250],
                     "..."
                 )
+
                 print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
                 return url
@@ -284,18 +312,26 @@ def obtener_enlace_video(canal):
         # =========================================================
         # ERROR 10002
         # =========================================================
-
         if code == "10002":
 
             print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            print("❌ EZVIZ RECHAZÓ EL ACCESS TOKEN")
-            print("❌ Código:", code)
+
+            print(
+                "❌ EZVIZ RECHAZÓ EL ACCESS TOKEN"
+            )
+
+            print(
+                "❌ Código:",
+                code
+            )
+
             print(
                 "❌ Mensaje:",
                 res.get("msg")
             )
 
             print("🔐 Token utilizado:")
+
             print(
                 "   Longitud:",
                 len(token_actual)
@@ -318,27 +354,42 @@ def obtener_enlace_video(canal):
                 ).hexdigest()
             )
 
-            print("⚠️ NO se renovará automáticamente.")
-            print("⚠️ Esta prueba utiliza exactamente el token de Railway.")
+            print(
+                "⚠️ NO se renovará automáticamente."
+            )
+
+            print(
+                "⚠️ Esta prueba utiliza exactamente el token de Railway."
+            )
+
             print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
             return None
 
         # =========================================================
-        # OTRO ERROR EZVIZ
+        # OTRO CÓDIGO DE ERROR EZVIZ
         # =========================================================
-
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        print("❌ EZVIZ NO entregó URL de streaming")
-        print("❌ Código:", code)
+
+        print(
+            "❌ EZVIZ NO entregó URL de streaming"
+        )
+
+        print(
+            "❌ Código:",
+            code
+        )
+
         print(
             "❌ Mensaje:",
             res.get("msg")
         )
+
         print(
             "📦 Respuesta completa:",
             res
         )
+
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         return None
@@ -346,10 +397,12 @@ def obtener_enlace_video(canal):
     # =============================================================
     # ERRORES DE RED
     # =============================================================
-
     except requests.exceptions.Timeout:
 
-        print("❌ Timeout conectando con EZVIZ")
+        print(
+            "❌ Timeout conectando con EZVIZ"
+        )
+
         return None
 
     except requests.exceptions.ConnectionError as e:
