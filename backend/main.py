@@ -122,6 +122,7 @@ def obtener_enlace_video(canal):
         print(f"📹 Device: {SERIAL_CAMARA}")
         print(f"📡 Canal: {canal}")
         print(f"🔑 Token presente: {'SI' if token_actual else 'NO'}")
+        print(f"🔐 Token SHA256: {hashlib.sha256(token_actual.encode()).hexdigest()}")
 
         response = requests.post(
             API_URL,
@@ -141,43 +142,15 @@ def obtener_enlace_video(canal):
             res = response.json()
         except Exception as json_error:
             print(f"❌ EZVIZ NO devolvió JSON: {json_error}")
-            print(f"📄 Respuesta completa: {response.text[:2000]}")
             return None
 
         print(f"📦 JSON EZVIZ: {res}")
 
         code = str(res.get("code", ""))
 
-        # Token inválido/expirado
-        if code == "10002":
-            print("⚠️ Access Token inválido o expirado.")
-            print("🔄 Intentando renovar Access Token...")
-
-            nuevo_token = obtener_nuevo_access_token()
-
-            if nuevo_token:
-                payload['accessToken'] = nuevo_token
-
-                print("🔄 Reintentando obtener URL de streaming...")
-
-                response = requests.post(
-                    API_URL,
-                    data=payload,
-                    timeout=10.0
-                )
-
-                print(f"📥 Segundo HTTP Status: {response.status_code}")
-                print(f"📥 Segunda respuesta EZVIZ: {response.text[:2000]}")
-
-                try:
-                    res = response.json()
-                    code = str(res.get("code", ""))
-                    print(f"📦 Segundo JSON EZVIZ: {res}")
-                except Exception as e:
-                    print(f"❌ Segundo response no es JSON: {e}")
-                    return None
-
-        # URL obtenida correctamente
+        # =========================================================
+        # ÉXITO
+        # =========================================================
         if code == "200":
             data = res.get("data", {})
             url = data.get("url")
@@ -190,25 +163,43 @@ def obtener_enlace_video(canal):
 
             print("❌ EZVIZ respondió code=200 pero no entregó data.url")
             print(f"📦 Data recibida: {data}")
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             return None
 
-        # Cualquier otro código
+        # =========================================================
+        # TOKEN INVÁLIDO
+        # =========================================================
+        if code == "10002":
+            print("❌ EZVIZ rechazó el Access Token.")
+            print("❌ Código: 10002")
+            print("❌ Mensaje:", res.get("msg"))
+            print("⚠️ NO se intentará renovar automáticamente el token.")
+            print("⚠️ El token recibido por Railway coincide con el configurado.")
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            return None
+
+        # =========================================================
+        # OTRO ERROR
+        # =========================================================
         print("❌ EZVIZ NO entregó URL de streaming")
         print(f"❌ Código EZVIZ: {code}")
         print(f"❌ Mensaje EZVIZ: {res.get('msg')}")
         print(f"📦 Respuesta completa: {res}")
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
+        return None
+
     except requests.exceptions.Timeout:
         print("❌ Timeout conectando con EZVIZ")
+        return None
 
     except requests.exceptions.ConnectionError as e:
         print(f"❌ Error de conexión con EZVIZ: {e}")
+        return None
 
     except Exception as e:
         print(f"❌ Error inesperado EZVIZ: {type(e).__name__}: {e}")
-
-    return None
+        return None
 
 def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
     """
