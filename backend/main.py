@@ -8,7 +8,7 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
     "stimeout;800000|"
     "fflags;nobuffer|flags;low_delay"
 )
-
+import hashlib
 import time
 import cv2
 import requests
@@ -46,6 +46,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_token_debug = os.getenv("ACCESS_TOKEN", "")
+
+print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+print("🔐 DEBUG ACCESS TOKEN - RAILWAY")
+print("📏 Longitud:", len(_token_debug))
+print("🔑 Inicio:", _token_debug[:8])
+print("🔚 Final:", _token_debug[-8:])
+print("🔐 SHA256:", hashlib.sha256(_token_debug.encode()).hexdigest())
+print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 # METRICAS GLOBALES
 tiempo_inicio_sistema = time.time()
