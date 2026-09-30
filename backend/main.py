@@ -434,7 +434,7 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
       2) fallo al abrir HLS con OpenCV/FFmpeg,
       3) fallo al leer frames una vez abierto el stream.
     """
-    global streaming_activo, cam1_online
+    global streaming_activo, cam1_online, frame1_raw, frame1_raw_version
 
     intentos_sin_url = 0
     intentos_no_abre = 0
@@ -544,6 +544,12 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
                 frames_recibidos += 1
                 cam1_online = True
 
+                # Salida RAW: se actualiza inmediatamente al llegar el frame.
+                # Esta ruta no espera a YOLO/OCR/blockchain.
+                with lock_raw_frame:
+                    frame1_raw = frame.copy()
+                    frame1_raw_version += 1
+
                 # Loguear solo cada 5 segundos para no inundar Railway Logs.
                 ahora = time.time()
                 if ahora - ultimo_log_frame >= 5.0:
@@ -582,18 +588,28 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
             )
             time.sleep(3.0)
 
-# Only Camera 1 (channel 1 / "South Shoulder") is wired up. Camera 2 was
-# removed: the EZVIZ channel-2 feed was unreliable in testing and doubling
-# up the YOLO inference loop across two feeds was the main bottleneck
-# slowing Camera 1 down.
-threading.Thread(target=recibir_stream_ezviz, args=(1, cola_frames_cam1, "Camara 1"), daemon=True).start()
-
+# Camera 1 (channel 1 / "South Shoulder") alimenta dos salidas visuales:
+# 1) /video_feed_raw     -> monitoreo en vivo, sin IA superpuesta.
+# 2) /video_feed_1       -> vista procesada por YOLO/OCR/eventos.
+#
+# Es una sola conexión con EZVIZ; no se duplica el stream remoto.
 frame_inicio_default = np.zeros((360, 640, 3), dtype=np.uint8)
 cv2.putText(frame_inicio_default, "Iniciando Camara...", (200, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
+frame1_raw = frame_inicio_default.copy()
+frame1_raw_version = 0
+lock_raw_frame = threading.Lock()
+
 frame1_procesado = frame_inicio_default.copy()
+frame1_procesado_version = 0
 ultima_placa_detectada_info = {"placa": None, "fuente": None, "hora": None}
 lock_frames = threading.Lock()
+
+threading.Thread(
+    target=recibir_stream_ezviz,
+    args=(1, cola_frames_cam1, "Camara 1"),
+    daemon=True
+).start()
 
 def ya_fue_multado_en_posicion(xc, yc, camara_origen, umbral_pixeles=60):
     for m_xc, m_yc, m_cam in multas_procesadas_posicion:
@@ -678,7 +694,7 @@ def bucle_analitica_principal():
     global cam1_detecto, frames_gracia_cam1
     global alerta_infraccion_activa, tiempo_total_obstruido, ultimo_check_tiempo
     global vehiculos_detectados_cam1
-    global frame1_procesado, multas_procesadas_posicion
+    global frame1_procesado, frame1_procesado_version, multas_procesadas_posicion
     global conteo_historico_tipos
 
     ultimo_frame1_valido = frame_inicio_default.copy()
@@ -697,24 +713,6 @@ def bucle_analitica_principal():
         ultimo_check_tiempo = tiempo_actual
 
         if np.any(frame1):
-            # Reducir resolución temprano (antes de YOLO/overlays/fillPoly)
-            # recorta el costo de CPU de TODO el pipeline, no solo de la
-            # inferencia: menos píxeles para dibujar, menos píxeles para
-            # mezclar el overlay semitransparente, menos trabajo para el
-            # resize interno de YOLO. 960px de ancho sigue dejando margen
-            # razonable de calidad para el recorte de placa en
-            # registrar_captura_anpr (no lo bajamos hasta 640x360 todavía,
-            # eso se sigue haciendo recién al final para el streaming).
-            h_orig, w_orig = frame1.shape[:2]
-            ANCHO_MAX_PROCESAMIENTO = 960
-            if w_orig > ANCHO_MAX_PROCESAMIENTO:
-                escala = ANCHO_MAX_PROCESAMIENTO / w_orig
-                frame1 = cv2.resize(
-                    frame1,
-                    (ANCHO_MAX_PROCESAMIENTO, int(h_orig * escala)),
-                    interpolation=cv2.INTER_AREA,
-                )
-
             h1, w1 = frame1.shape[:2]
             p_a1 = np.array([[int(p[0]*w1), int(p[1]*h1)] for p in POLIGONO_A_PORCENTUAL], np.int32)
 
@@ -790,6 +788,7 @@ def bucle_analitica_principal():
 
             with lock_frames:
                 frame1_procesado = cv2.resize(frame1, (640, 360))
+                frame1_procesado_version += 1
 
         # No sleep when a frame was just processed: return to the queue
         # immediately so the next available frame is picked up as fast as
@@ -904,26 +903,70 @@ async def stream_anpr_video():
 async def video_feed_anpr():
     return StreamingResponse(stream_anpr_video(), media_type="multipart/x-mixed-replace; boundary=frame")
 
-async def stream_camara_1():
+async def stream_camara_raw():
+    """MJPEG de monitoreo: entrega el último frame recibido de EZVIZ sin IA."""
+    ultimo_version = -1
+    frame_bytes_cache = BYTES_CARGANDO
+
     while True:
-        with lock_frames:
-            f = frame1_procesado
-            if f is not None:
-                ret, buffer = cv2.imencode('.jpg', f, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
-                frame_bytes = buffer.tobytes() if ret else BYTES_CARGANDO
-            else:
-                frame_bytes = BYTES_CARGANDO
+        with lock_raw_frame:
+            version_actual = frame1_raw_version
+            f = frame1_raw.copy() if (frame1_raw is not None and version_actual != ultimo_version) else None
+
+        # Solo codificamos JPEG cuando realmente llegó un frame nuevo.
+        if f is not None:
+            ret, buffer = cv2.imencode(
+                '.jpg',
+                f,
+                [int(cv2.IMWRITE_JPEG_QUALITY), 78]
+            )
+            if ret:
+                frame_bytes_cache = buffer.tobytes()
+                ultimo_version = version_actual
 
         yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-        # 0.02s ~= 50 FPS ceiling on the MJPEG push itself (JPEG-encoding a
-        # single small frame is cheap; the real speed limit is the YOLO
-        # inference in bucle_analitica_principal, not this stream).
-        await asyncio.sleep(0.02)
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes_cache + b'\r\n')
+        await asyncio.sleep(0.033)
+
+@app.get("/video_feed_raw")
+async def video_feed_raw():
+    return StreamingResponse(
+        stream_camara_raw(),
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )
+
+async def stream_camara_1():
+    """MJPEG de análisis: conserva la salida existente con YOLO y eventos."""
+    ultimo_version_local = -1
+    frame_bytes_cache = BYTES_CARGANDO
+
+    while True:
+        with lock_frames:
+            version_procesado = frame1_procesado_version
+            f = frame1_procesado.copy() if (frame1_procesado is not None and version_procesado != ultimo_version_local) else None
+
+        # El frame procesado se actualiza desde el loop de analítica; evitamos
+        # volver a comprimir la misma imagen decenas de veces por segundo.
+        if f is not None:
+            ret, buffer = cv2.imencode(
+                '.jpg',
+                f,
+                [int(cv2.IMWRITE_JPEG_QUALITY), 75]
+            )
+            if ret:
+                frame_bytes_cache = buffer.tobytes()
+                ultimo_version_local = version_procesado
+
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes_cache + b'\r\n')
+        await asyncio.sleep(0.033)
 
 @app.get("/video_feed_1")
 async def video_feed_1():
-    return StreamingResponse(stream_camara_1(), media_type="multipart/x-mixed-replace; boundary=frame")
+    return StreamingResponse(
+        stream_camara_1(),
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )
 
 @app.get("/api/camera/status")
 def get_camera_status():
@@ -934,6 +977,7 @@ def get_camera_status():
         "online": cam1_online,
         "streaming_active": streaming_activo,
         "queue_size": cola_frames_cam1.qsize(),
+        "raw_frame_version": frame1_raw_version,
         "opencv_version": cv2.__version__,
     }
 
