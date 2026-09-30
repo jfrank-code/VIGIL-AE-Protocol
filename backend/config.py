@@ -8,7 +8,7 @@ load_dotenv()
 SERIAL_CAMARA = os.getenv("SERIAL_CAMARA", "D12639530")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN", "")
 # Se corrige el nombre para que coincida con tu .env
-API_URL = os.getenv("EZVIZ_API_URL", os.getenv("API_URL", "https://open.ezvizlife.com/api/lapp/live/address/get"))
+API_URL = os.getenv("EZVIZ_API_URL", os.getenv("API_URL", "https://isaopen.ezvizlife.com/api/lapp/live/address/get"))
 # Configuración Twilio WhatsApp
 
 APP_KEY = os.getenv("APP_KEY", "")
