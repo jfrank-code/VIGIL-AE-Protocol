@@ -3,13 +3,13 @@ import os
 # Configuración global de FFmpeg ANTES de cualquier llamada a OpenCV
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
     "allowed_extensions;ALL|"
-    "protocol_whitelist;file,crypto,data,http,https,tcp,tls,rtp,udp,subfile|"
+    "protocol_whitelist;file,crypto,data,http,https,rtmp,tcp,tls,rtp,udp,subfile|"
     # Keep HLS network reads bounded. We intentionally do NOT enable FFmpeg's
     # reconnect_* options here because, with EZVIZ HLS, they can keep an
     # unavailable segment in an internal retry loop for much longer than the
     # application-level watchdog. Our code handles reconnects explicitly.
-    "rw_timeout;3000000|"
-    "stimeout;3000000|"
+    "rw_timeout;15000000|"
+    "stimeout;15000000|"
     "fflags;nobuffer|flags;low_delay"
 )
 import hashlib
@@ -108,14 +108,14 @@ def obtener_nuevo_access_token():
         print(f"❌ Error al solicitar token EZVIZ: {e}")
     return None
 
-def obtener_enlace_video(canal):
+def obtener_enlace_video(canal, protocolo=2):
     token_actual = getattr(config, 'ACCESS_TOKEN', ACCESS_TOKEN)
 
     payload = {
         'accessToken': token_actual,
         'deviceSerial': SERIAL_CAMARA,
         'channelNo': str(canal),
-        'protocol': 2,
+        'protocol': int(protocolo),
         'quality': 1
     }
 
@@ -452,7 +452,11 @@ def _abrir_video_capture_ezviz(url_actual, timeout_seconds=3.0):
 
 def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
     """
-    Captura EZVIZ con timeout corto y reconexión explícita.
+    Captura EZVIZ con apertura tolerante y lectura acotada.
+
+    La versión anterior fue demasiado agresiva: 3 s para abrir HLS no era suficiente
+    para el primer segmento del edge de EZVIZ en Railway. Aquí mantenemos una sola
+    captura, permitimos hasta 15 s para abrir y 5 s para leer, y luego reconectamos.
 
     La regla importante de esta versión es: solo existe UN intento de
     VideoCapture a la vez. Si EZVIZ/HLS deja de responder, OpenCV/FFmpeg sale
@@ -468,8 +472,8 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
     frames_recibidos = 0
     ultimo_log_frame = 0.0
 
-    OPEN_TIMEOUT = 3.0
-    READ_TIMEOUT = 3.0
+    OPEN_TIMEOUT = 15.0
+    READ_TIMEOUT = 5.0
 
     print(f"🎥 [{nombre_cam}] Hilo de captura EZVIZ iniciado. Canal={canal_no}")
     print(f"🎥 [{nombre_cam}] OpenCV version: {cv2.__version__}")
@@ -479,7 +483,11 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
         cap = None
 
         try:
-            url_actual = obtener_enlace_video(canal_no)
+            # Mantener HLS (protocol=2), que era el camino que ya funcionaba
+            # antes del cambio agresivo de timeouts. La mejora aquí es impedir
+            # bloqueos largos, no cambiar el protocolo de reproducción.
+            protocolo_usado = 2
+            url_actual = obtener_enlace_video(canal_no, protocolo=2)
 
             if not url_actual:
                 intentos_sin_url += 1
