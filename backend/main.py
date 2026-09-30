@@ -697,6 +697,24 @@ def bucle_analitica_principal():
         ultimo_check_tiempo = tiempo_actual
 
         if np.any(frame1):
+            # Reducir resolución temprano (antes de YOLO/overlays/fillPoly)
+            # recorta el costo de CPU de TODO el pipeline, no solo de la
+            # inferencia: menos píxeles para dibujar, menos píxeles para
+            # mezclar el overlay semitransparente, menos trabajo para el
+            # resize interno de YOLO. 960px de ancho sigue dejando margen
+            # razonable de calidad para el recorte de placa en
+            # registrar_captura_anpr (no lo bajamos hasta 640x360 todavía,
+            # eso se sigue haciendo recién al final para el streaming).
+            h_orig, w_orig = frame1.shape[:2]
+            ANCHO_MAX_PROCESAMIENTO = 960
+            if w_orig > ANCHO_MAX_PROCESAMIENTO:
+                escala = ANCHO_MAX_PROCESAMIENTO / w_orig
+                frame1 = cv2.resize(
+                    frame1,
+                    (ANCHO_MAX_PROCESAMIENTO, int(h_orig * escala)),
+                    interpolation=cv2.INTER_AREA,
+                )
+
             h1, w1 = frame1.shape[:2]
             p_a1 = np.array([[int(p[0]*w1), int(p[1]*h1)] for p in POLIGONO_A_PORCENTUAL], np.int32)
 
