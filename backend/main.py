@@ -4,17 +4,12 @@ import os
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
     "allowed_extensions;ALL|"
     "protocol_whitelist;file,crypto,data,http,https,tcp,tls,rtp,udp,subfile|"
-    # Keep network reads bounded: do not let a dead HLS segment hold the
-    # capture for tens of seconds before the reconnect logic can run.
-    "rw_timeout;5000000|"
-    "stimeout;5000000|"
-    # Ask FFmpeg to reconnect streamed HTTP/HLS sources when possible.
-    "reconnect;1|"
-    "reconnect_at_eof;1|"
-    "reconnect_streamed;1|"
-    "reconnect_on_network_error;1|"
-    "reconnect_delay_max;2|"
-    "multiple_requests;1|"
+    # Keep HLS network reads bounded. We intentionally do NOT enable FFmpeg's
+    # reconnect_* options here because, with EZVIZ HLS, they can keep an
+    # unavailable segment in an internal retry loop for much longer than the
+    # application-level watchdog. Our code handles reconnects explicitly.
+    "rw_timeout;3000000|"
+    "stimeout;3000000|"
     "fflags;nobuffer|flags;low_delay"
 )
 import hashlib
@@ -185,24 +180,6 @@ def obtener_enlace_video(canal):
         )
 
         print("📤 Headers:", headers)
-
-        # =========================================================
-        # IP PÚBLICA DE RAILWAY
-        # =========================================================
-        try:
-            ip_response = requests.get(
-                "https://api.ipify.org?format=json",
-                timeout=10
-            )
-
-            print("🌍 IP PÚBLICA RAILWAY:")
-            print(ip_response.text)
-
-        except Exception as e:
-            print(
-                "❌ No se pudo obtener IP pública:",
-                e
-            )
 
         # =========================================================
         # PETICIÓN A EZVIZ
@@ -432,50 +409,57 @@ def obtener_enlace_video(canal):
 
         return None
 
-def _abrir_video_capture_ezviz(url_actual):
+def _abrir_video_capture_ezviz(url_actual, timeout_seconds=3.0):
     """
-    Abre el HLS de EZVIZ con límites explícitos de apertura/lectura.
-
-    OpenCV soporta OPEN_TIMEOUT/READ_TIMEOUT con el backend FFmpeg en
-    versiones modernas. Si la versión instalada no acepta los parámetros en
-    el constructor, caemos de forma segura al constructor tradicional y
-    dejamos que el watchdog de recibir_stream_ezviz haga el corte.
+    Abre el HLS EZVIZ de forma síncrona y acotada por los timeouts nativos
+    de OpenCV/FFmpeg. No crea hilos auxiliares para VideoCapture: un intento
+    fallido termina por sí mismo y nunca deja aperturas huérfanas ejecutándose
+    en segundo plano.
     """
     params = []
+    timeout_ms = int(timeout_seconds * 1000)
+
     if hasattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC"):
-        params.extend([cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000])
+        params.extend([cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, timeout_ms])
     if hasattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC"):
-        params.extend([cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000])
+        params.extend([cv2.CAP_PROP_READ_TIMEOUT_MSEC, timeout_ms])
 
     try:
         if params:
-            cap = cv2.VideoCapture(url_actual, cv2.CAP_FFMPEG, params)
+            try:
+                cap = cv2.VideoCapture(url_actual, cv2.CAP_FFMPEG, params)
+            except (TypeError, cv2.error):
+                # Compatibilidad con builds de OpenCV que no aceptan params.
+                # El timeout global de OPENCV_FFMPEG_CAPTURE_OPTIONS sigue
+                # acotando la operación en las builds que lo soportan.
+                cap = cv2.VideoCapture(url_actual, cv2.CAP_FFMPEG)
         else:
             cap = cv2.VideoCapture(url_actual, cv2.CAP_FFMPEG)
-    except (TypeError, cv2.error):
-        cap = cv2.VideoCapture(url_actual, cv2.CAP_FFMPEG)
 
-    # Evita acumular frames viejos dentro de OpenCV.
-    try:
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    except Exception:
-        pass
+        if cap is None:
+            return None
 
-    return cap
+        try:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
 
+        return cap
+
+    except Exception as exc:
+        print(f"⚠️ Error abriendo HLS EZVIZ: {type(exc).__name__}: {exc}")
+        return None
 
 def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
     """
-    Captura EZVIZ con watchdog de lectura y reconexión rápida.
+    Captura EZVIZ con timeout corto y reconexión explícita.
 
-    La prioridad es que un bloqueo del HLS no pueda congelar la aplicación
-    durante minutos. La lectura de FFmpeg ocurre en un hilo dedicado; el hilo
-    principal vigila cuánto tiempo pasó desde el último frame válido y, si el
-    stream deja de entregar datos, libera la captura y vuelve a solicitar una
-    nueva URL.
-
-    No se cambia la lógica de YOLO/OCR/blockchain: este hilo solo alimenta la
-    salida RAW y la cola de analítica, igual que antes.
+    La regla importante de esta versión es: solo existe UN intento de
+    VideoCapture a la vez. Si EZVIZ/HLS deja de responder, OpenCV/FFmpeg sale
+    por timeout y liberamos ese único objeto antes de pedir una nueva URL.
+    Esto evita acumular hilos/aperturas huérfanas, que era lo que podía hacer
+    que Railway se quedara intentando varios streams simultáneamente durante
+    minutos.
     """
     global streaming_activo, cam1_online, frame1_raw, frame1_raw_version
 
@@ -484,9 +468,8 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
     frames_recibidos = 0
     ultimo_log_frame = 0.0
 
-    # Si no llega ningún frame durante este tiempo, consideramos muerto el
-    # HLS aunque OpenCV/FFmpeg todavía siga esperando internamente.
-    WATCHDOG_TIMEOUT = 7.0
+    OPEN_TIMEOUT = 3.0
+    READ_TIMEOUT = 3.0
 
     print(f"🎥 [{nombre_cam}] Hilo de captura EZVIZ iniciado. Canal={canal_no}")
     print(f"🎥 [{nombre_cam}] OpenCV version: {cv2.__version__}")
@@ -494,13 +477,6 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
 
     while streaming_activo:
         cap = None
-        reader_thread = None
-        reader_stop = threading.Event()
-        reader_queue = queue.Queue(maxsize=2)
-        reader_state = {
-            "last_frame_time": time.monotonic(),
-            "error": None,
-        }
 
         try:
             url_actual = obtener_enlace_video(canal_no)
@@ -515,7 +491,7 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
                         f"(intento {intentos_sin_url})."
                     )
 
-                time.sleep(2.0)
+                time.sleep(1.5)
                 continue
 
             intentos_sin_url = 0
@@ -532,21 +508,22 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
                 print(f"🔗 [{nombre_cam}] URL EZVIZ obtenida correctamente.")
 
             print(
-                f"🎬 [{nombre_cam}] Intentando abrir HLS con "
-                f"OpenCV/FFmpeg (timeout apertura/lectura=5s)..."
+                f"🎬 [{nombre_cam}] Abriendo HLS con OpenCV/FFmpeg "
+                f"(open={OPEN_TIMEOUT:.0f}s, read={READ_TIMEOUT:.0f}s)..."
             )
 
-            cap = _abrir_video_capture_ezviz(url_actual)
+            cap = _abrir_video_capture_ezviz(url_actual, timeout_seconds=OPEN_TIMEOUT)
 
-            if not cap.isOpened():
+            if cap is None or not cap.isOpened():
                 intentos_no_abre += 1
                 cam1_online = False
 
                 backend_name = "desconocido"
-                try:
-                    backend_name = cap.getBackendName()
-                except Exception:
-                    pass
+                if cap is not None:
+                    try:
+                        backend_name = cap.getBackendName()
+                    except Exception:
+                        pass
 
                 if intentos_no_abre <= 3 or intentos_no_abre % 10 == 0:
                     print(
@@ -554,9 +531,13 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
                         f"Intento={intentos_no_abre}, backend={backend_name}"
                     )
 
-                cap.release()
+                if cap is not None:
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
                 cap = None
-                time.sleep(1.5)
+                time.sleep(1.0)
                 continue
 
             intentos_no_abre = 0
@@ -573,64 +554,28 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
             )
 
             cam1_online = True
-            reader_state["last_frame_time"] = time.monotonic()
-
-            def _reader():
-                while streaming_activo and not reader_stop.is_set():
-                    try:
-                        ret, frame = cap.read()
-                    except Exception as exc:
-                        reader_state["error"] = f"{type(exc).__name__}: {exc}"
-                        break
-
-                    if not ret or frame is None or np.sum(frame) == 0:
-                        reader_state["error"] = "cap.read() no devolvió un frame válido"
-                        break
-
-                    reader_state["last_frame_time"] = time.monotonic()
-
-                    # Solo conservamos los frames más recientes para analítica.
-                    while not reader_queue.empty():
-                        try:
-                            reader_queue.get_nowait()
-                        except queue.Empty:
-                            break
-
-                    try:
-                        reader_queue.put_nowait(frame)
-                    except queue.Full:
-                        pass
-
-            reader_thread = threading.Thread(
-                target=_reader,
-                daemon=True,
-                name=f"EZVIZ-reader-{nombre_cam}"
-            )
-            reader_thread.start()
+            ultimo_frame_valido = time.monotonic()
 
             while streaming_activo:
                 try:
-                    frame = reader_queue.get(timeout=0.5)
-                except queue.Empty:
-                    elapsed = time.monotonic() - reader_state["last_frame_time"]
+                    ret, frame = cap.read()
+                except Exception as exc:
+                    print(
+                        f"⚠️ [{nombre_cam}] Error en cap.read(): "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    break
 
-                    if reader_state["error"] or elapsed >= WATCHDOG_TIMEOUT:
-                        if reader_state["error"]:
-                            reason = reader_state["error"]
-                        else:
-                            reason = (
-                                f"watchdog: {elapsed:.1f}s sin recibir frames"
-                            )
+                if not ret or frame is None or np.sum(frame) == 0:
+                    elapsed = time.monotonic() - ultimo_frame_valido
+                    print(
+                        f"⚠️ [{nombre_cam}] HLS dejó de entregar frames "
+                        f"({elapsed:.1f}s desde el último frame). "
+                        f"Forzando reconexión..."
+                    )
+                    break
 
-                        print(
-                            f"⚠️ [{nombre_cam}] HLS sin datos. {reason}. "
-                            f"Forzando reconexión..."
-                        )
-                        cam1_online = False
-                        break
-
-                    continue
-
+                ultimo_frame_valido = time.monotonic()
                 frames_recibidos += 1
                 cam1_online = True
 
@@ -648,7 +593,7 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
                     )
                     ultimo_log_frame = ahora
 
-                # La analítica también recibe siempre el frame más reciente.
+                # La analítica recibe siempre el frame más reciente.
                 while not cola_destino.empty():
                     try:
                         cola_destino.get_nowait()
@@ -670,16 +615,12 @@ def recibir_stream_ezviz(canal_no, cola_destino, nombre_cam):
             )
 
         finally:
-            # Primero pedimos al lector que termine; después liberamos FFmpeg.
-            reader_stop.set()
             if cap is not None:
                 try:
                     cap.release()
                 except Exception:
                     pass
-
-            if reader_thread is not None and reader_thread.is_alive():
-                reader_thread.join(timeout=2.0)
+                cap = None
 
             if streaming_activo:
                 print(
@@ -1015,9 +956,10 @@ async def stream_camara_raw():
 
         # Solo codificamos JPEG cuando realmente llegó un frame nuevo.
         if f is not None:
+            f_display = cv2.resize(f, (640, 360), interpolation=cv2.INTER_AREA)
             ret, buffer = cv2.imencode(
                 '.jpg',
-                f,
+                f_display,
                 [int(cv2.IMWRITE_JPEG_QUALITY), 78]
             )
             if ret:
