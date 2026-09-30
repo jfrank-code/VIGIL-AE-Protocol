@@ -1,292 +1,288 @@
+<div align="center">
+
 VIGIL-AE Protocol
 
-AI-Powered Traffic Surveillance, Automated Incident Detection and Verifiable Evidence
+AI-Powered Traffic Surveillance & Verifiable Evidence
 
-VIGIL-AE Protocol is an AI-powered surveillance platform designed for Peru that combines real-time computer vision, automatic license plate recognition, incident detection, alerts, and Blockchain/Web3 to create secure, transparent, and traceable traffic evidence.
+Real-time traffic monitoring that combines computer vision, ANPR/OCR, automated incident detection, blockchain verification and instant alerts.
 
-The platform transforms a conventional surveillance camera into an intelligent monitoring system capable of detecting vehicles, identifying potential traffic violations, generating digital incident records, and registering evidence in a verifiable blockchain workflow.
+<br>
 
-🚨 The Problem
 
-Traffic surveillance systems commonly depend on human operators to continuously monitor cameras, identify incidents, read license plates, and generate reports.
 
-This creates several challenges:
+
+
+
+
+
+<br>
+
+GitHub Repository
+
+</div>
+
+Overview
+
+VIGIL-AE Protocol turns a conventional surveillance camera into an intelligent traffic-monitoring system.
+
+The platform combines live video with AI analysis to detect vehicles and monitored-zone events, integrate license-plate recognition, generate digital incident records, register evidence on-chain, and send notifications.
+
+The project is designed as a functional prototype / MVP demonstrating the complete workflow from camera input to verifiable digital evidence.
+
+The Problem
+
+Traditional surveillance workflows often rely heavily on operators to continuously watch cameras, identify incidents, read plates and prepare reports.
+
+This can create:
+
+Delayed incident detection.
 
 High dependence on manual monitoring.
 
-Delayed detection of traffic incidents.
+Difficulty connecting video evidence with incident records.
 
-Difficulty identifying vehicles in real time.
+Fragmented workflows between detection, reporting and verification.
 
-Evidence scattered across different systems.
+Limited traceability of generated records.
 
-Limited traceability of generated reports.
+VIGIL-AE addresses this by connecting the main steps into a single system.
 
-Lack of a unified workflow between surveillance, AI analysis, notifications, and evidence verification.
+The Solution
 
-In high-traffic environments, these limitations can reduce response speed and make it harder to preserve trustworthy evidence.
+             LIVE CAMERA
+                  │
+                  ▼
+        ┌──────────────────┐
+        │  COMPUTER VISION  │
+        │      YOLOv8      │
+        └────────┬─────────┘
+                 │
+        ┌────────┴────────┐
+        ▼                 ▼
+ Vehicle Detection    Zone Analysis
+        │                 │
+        └────────┬────────┘
+                 ▼
+              ANPR / OCR
+                 │
+                 ▼
+          Incident Record
+          ├── Vehicle
+          ├── Plate
+          ├── Time
+          ├── Origin
+          └── Evidence
+                 │
+        ┌────────┴────────┐
+        ▼                 ▼
+   Blockchain          WhatsApp
+   Verification          Alert
+        │                 │
+        └────────┬────────┘
+                 ▼
+          VIGIL-AE DASHBOARD
 
-💡 The Solution
+Camera Architecture
 
-VIGIL-AE Protocol creates an intelligent surveillance layer on top of conventional camera infrastructure.
-
-Instead of simply displaying video, the platform continuously analyzes the scene and connects multiple technologies into a single workflow:
-
-Live Camera
-     │
-     ▼
-Computer Vision
-     │
-     ├── Vehicle Detection
-     ├── Vehicle Classification
-     ├── Restricted-Zone Detection
-     └── Incident Monitoring
-     │
-     ▼
-ANPR / OCR
-     │
-     ▼
-Incident Record
-     │
-     ├── Evidence
-     ├── Vehicle
-     ├── License Plate
-     ├── Time
-     └── Location / Origin
-     │
-     ├───────────────┐
-     ▼               ▼
-Blockchain        WhatsApp
-Verification      Alert
-     │               │
-     └───────┬───────┘
-             ▼
-        VIGIL-AE Dashboard
-
-This architecture allows the system to move from surveillance → detection → evidence → verification → notification in a single workflow.
-
-🎥 Dual Camera Visualization
-
-VIGIL-AE provides two simultaneous visual perspectives from the same live camera input.
+VIGIL-AE exposes two visual perspectives from the same live camera input.
 
 Camera 01 — Monitoring
 
-Displays the live camera feed without AI overlays.
+Purpose: live supervision.
 
-Purpose:
+Original camera view.
 
-Real-time visual supervision.
+No AI overlays.
 
-Original camera perspective.
+Designed for fast visual monitoring.
 
-Continuous monitoring.
-
-Easy comparison between the real scene and the AI interpretation.
+Uses the raw camera frame.
 
 Camera 01 — AI Analysis
 
-Displays the live scene together with the intelligent analysis layer.
+Purpose: intelligent traffic analysis.
 
-Purpose:
+YOLOv8 vehicle detection.
 
-Vehicle detection.
+Restricted-zone visualization.
 
-Restricted-zone monitoring.
+Incident analysis.
 
-AI annotations.
+ANPR/OCR workflow.
 
-Incident visualization.
+AI-generated overlays.
 
-ANPR/OCR integration.
-
-Conceptually:
-
-                    EZVIZ STREAM
-                         │
+                    EZVIZ
+                      │
+                      ▼
+                 LIVE FRAME
+                      │
+             ┌────────┴────────┐
+             │                 │
+             ▼                 ▼
+       MONITORING VIEW     AI ANALYSIS
+        RAW / LIVE         YOLOv8 + Events
+             │                 │
+             │                 ▼
+             │             ANPR / OCR
+             │                 │
+             │                 ▼
+             │            Incident Logic
+             │
+             └───────────┬─────────────┘
                          ▼
-                    LIVE FRAME
-                         │
-              ┌──────────┴──────────┐
-              │                     │
-              ▼                     ▼
-       MONITORING VIEW          AI ANALYSIS
-        Live / Raw Feed         YOLOv8 Processing
-              │                     │
-              ▼                     ▼
-       Human Supervision      Vehicle Detection
-                                    │
-                                    ▼
-                                  ANPR
-                                    │
-                                    ▼
-                                  OCR
-                                    │
-                                    ▼
-                              Incident Logic
+                    DASHBOARD
 
-Both views originate from the same camera stream.
+Both views come from the same camera stream; the second view adds the AI processing layer.
 
-🤖 Artificial Intelligence
+Artificial Intelligence
 
 YOLOv8
 
-VIGIL-AE uses YOLOv8 for real-time object detection.
+YOLOv8 is used for real-time vehicle detection.
 
-The system focuses on relevant traffic categories such as:
+The prototype focuses on:
 
 Cars
+
+Trucks
 
 Motorcycles
 
 Buses
 
-Trucks
+Detections can be evaluated against predefined polygonal surveillance zones.
 
-The detected vehicles are analyzed according to predefined surveillance zones.
+Restricted-Zone Monitoring
 
-🚧 Intelligent Restricted-Zone Detection
-
-The platform defines polygonal regions representing monitored traffic areas.
-
-When a vehicle enters a monitored restricted zone, VIGIL-AE evaluates its presence and monitors the situation over time.
-
-Example:
+The system represents monitored road areas as polygons.
 
              ROAD
-────────────────────────────────
+──────────────────────────────────
 
-             Vehicle
-                🚗
-                 │
-                 ▼
+             🚗
+              │
+              ▼
 
-        ┌───────────────────┐
-        │  RESTRICTED ZONE  │
-        │                   │
-        │       🚗          │
-        │                   │
-        └───────────────────┘
+       ┌──────────────────┐
+       │  RESTRICTED ZONE │
+       │                  │
+       │       🚗         │
+       │                  │
+       └──────────────────┘
+                  │
+                  ▼
+           Time threshold
+                  │
+                  ▼
+        Potential incident
 
-                │
-                ▼
-          Time Threshold
-                │
-                ▼
-       Potential Infraction
+The prototype uses a configurable time threshold to identify vehicles that remain in a monitored area.
 
-This allows the platform to distinguish between simple presence and situations that remain inside a restricted area beyond a configured time threshold.
+ANPR / OCR
 
-🔎 ANPR / OCR
+VIGIL-AE integrates automatic license-plate recognition into the incident pipeline.
 
-VIGIL-AE integrates license plate recognition into the incident workflow.
+Workflow
 
-The system can:
+Detect the vehicle.
 
-Detect a vehicle.
+Extract the vehicle region.
 
-Crop the vehicle region.
-
-Focus on the relevant license-plate area.
+Focus on the relevant plate area.
 
 Run OCR.
 
-Associate the result with the detected vehicle.
+Associate the result with the vehicle.
 
-Store the resulting evidence in the incident record.
+Store the evidence with the incident record.
 
 The OCR pipeline uses HyperLPR3.
 
-When a plate cannot be reliably read, the current prototype may use a simulated demonstration plate so that the rest of the workflow can still be demonstrated.
+Prototype note: when OCR does not obtain a reliable plate, the current demonstration may use a simulated value so the rest of the workflow can be demonstrated. Production deployments should replace this with validated OCR-only evidence.
 
-For production deployment, simulated values should be disabled and replaced by validated OCR-only evidence.
+Automated Incident Records
 
-📋 Automated Incident Records
+A detected event can generate a digital incident record containing fields such as:
 
-When the system determines that a monitored situation meets the configured infraction conditions, VIGIL-AE can generate an incident record containing information such as:
+Field
+
+Example
 
 Case ID
 
-License plate
+ACTA-2026-XXXXXXXXXX
 
-Vehicle type
+Plate
 
-Infraction type
+ABC-1234
+
+Vehicle
+
+Auto
+
+Infraction
+
+Restricted Zone
 
 Origin
 
+Node 01
+
 Date
+
+2026-09-30
 
 Time
 
-Evidence image
+12:15:42
+
+Evidence
+
+Captured image
 
 Blockchain status
 
-Blockchain transaction hash
-
-Example:
-
-{
-  "actaId": "ACTA-2026-XXXXXXXXXX",
-  "placa": "ABC-1234",
-  "infraccion": "Restricted Zone",
-  "vehiculo": "Auto",
-  "origen": "Node 01 (South Shoulder)",
-  "estado": "REGISTRADA"
-}
-
-⛓️ Blockchain / Web3
-
-VIGIL-AE integrates blockchain into the evidence workflow.
-
-The prototype uses:
-
-Web3
-
-Arbitrum Sepolia
-
-Transaction-based evidence registration
-
-Blockchain is used to create a verifiable record of generated incidents.
-
-The workflow is conceptually:
-
-Incident Detected
-       │
-       ▼
-Digital Record
-       │
-       ▼
-Blockchain Transaction
-       │
-       ▼
-Transaction Hash
-       │
-       ▼
-Confirmation
-       │
-       ▼
-Verifiable Evidence
-
-The system tracks different blockchain states, including:
-
-NOT_SUBMITTED
-
-BROADCASTING
-
 CONFIRMED
 
-FAILED
+This record becomes the bridge between AI detection and verifiable evidence.
 
+Blockchain Verification
+
+VIGIL-AE integrates Web3 + Arbitrum Sepolia into the incident workflow.
+
+Incident
+   │
+   ▼
+Digital Record
+   │
+   ▼
+Blockchain Transaction
+   │
+   ▼
+Transaction Hash
+   │
+   ▼
+Confirmation
+   │
+   ▼
+Verifiable Record
+
+The prototype tracks blockchain states such as:
+
+NOT_SUBMITTED
+BROADCASTING
+CONFIRMED
+FAILED
 UNCONFIRMED
 
-This prevents an incident from being incorrectly presented as confirmed before the blockchain transaction has actually been verified.
+This allows the interface to distinguish between a transaction that was created, one that was broadcast, and one that has actually been confirmed on-chain.
 
-📲 WhatsApp Alerts
+WhatsApp Notifications
 
-VIGIL-AE can send automated WhatsApp notifications when an incident is generated.
+When an incident is generated, VIGIL-AE can send a WhatsApp notification through Twilio.
 
-Example notification:
+Example:
 
 🚨 NEW INFRACTION REGISTERED
 
@@ -297,39 +293,45 @@ Infraction: Restricted Zone
 Origin: Node 01
 Arbitrum Hash: 0x....
 
-This allows the surveillance system to communicate incidents without requiring an operator to constantly monitor the dashboard.
+This enables the system to communicate incidents without requiring continuous dashboard supervision.
 
-💬 AI Copilot / Chat Interface
+AI Copilot
 
-The platform also includes an AI-assisted chat interface.
+The platform includes an AI-assisted operator interface.
 
-The copilot can interact with the incident system and provide information about:
-
-Detected incidents.
-
-License plates.
+The copilot can work with the surveillance data and explain information such as:
 
 Incident records.
 
-Blockchain status.
+License plates.
 
 Current surveillance statistics.
 
-It can also trigger supported incident workflows from natural-language commands.
+Blockchain status.
 
-Example:
+Example commands:
 
-"Show me the status of plate ABC123."
+"Show the status of plate ABC123."
 
 "Create an infraction for ABC123."
 
 "Is the blockchain transaction confirmed?"
 
-📊 Real-Time Dashboard
+Real-Time Dashboard
 
-VIGIL-AE includes a monitoring dashboard with real-time operational metrics.
+The dashboard combines live video and operational metrics.
 
-The dashboard can display:
+Monitoring
+
+Live camera feed.
+
+AI analysis feed.
+
+Active vehicle detections.
+
+Restricted-zone state.
+
+Metrics
 
 Total monitored vehicles.
 
@@ -343,137 +345,108 @@ Motorcycles.
 
 Buses.
 
-Restricted-zone activity.
-
 Roadway blocked time.
 
-Capacity loss indicators.
+Capacity-loss indicators.
+
+Evidence
+
+ANPR results.
+
+Captured vehicle images.
 
 Incident records.
 
-ANPR information.
-
 Blockchain status.
 
-The dashboard is designed to provide both visual monitoring and operational intelligence.
+Transaction hashes.
 
-🏗️ Architecture
+Technology Stack
 
-┌──────────────────────────────────────────────┐
-│                   FRONTEND                   │
-│                                              │
-│ React + Vite                                 │
-│                                              │
-│ ├── Camera Monitoring                        │
-│ ├── AI Analysis                              │
-│ ├── Metrics                                  │
-│ ├── Vehicle Classification                   │
-│ ├── OCR / ANPR                               │
-│ ├── Incident Records                         │
-│ └── AI Copilot                               │
-└───────────────────────┬──────────────────────┘
-                        │
-                        │ HTTP / REST
-                        ▼
-┌──────────────────────────────────────────────┐
-│                   BACKEND                    │
-│                                              │
-│ FastAPI + Python                             │
-│                                              │
-│ ├── EZVIZ Stream Integration                 │
-│ ├── YOLOv8                                   │
-│ ├── OCR / HyperLPR3                          │
-│ ├── Incident Detection                       │
-│ ├── Blockchain Integration                   │
-│ ├── WhatsApp Notifications                   │
-│ ├── Statistics                               │
-│ └── AI Copilot API                           │
-└───────────────┬─────────────────┬────────────┘
-                │                 │
-                ▼                 ▼
-        ┌──────────────┐   ┌───────────────┐
-        │ EZVIZ Camera │   │ Arbitrum      │
-        │ HLS Stream   │   │ Sepolia       │
-        └──────────────┘   └───────────────┘
-                │
-                ▼
-          Live Video Input
+Layer
 
-                ┌─────────────────┐
-                │ Twilio / WhatsApp│
-                └─────────────────┘
-
-🛠️ Technology Stack
-
-Backend
-
-Python
-
-FastAPI
-
-OpenCV
-
-NumPy
-
-Ultralytics YOLOv8
-
-HyperLPR3
-
-Requests
-
-Web3.py
-
-Pydantic
+Technologies
 
 Frontend
 
-React
+React, Vite, JavaScript
 
-Vite
+Backend
 
-JavaScript
-
-REST API integration
+Python, FastAPI
 
 Computer Vision
 
-YOLOv8
+YOLOv8, OpenCV, NumPy
 
-OpenCV
-
-HLS video processing
-
-Vehicle classification
-
-Polygon-based zone detection
-
-OCR / ANPR
+ANPR / OCR
 
 HyperLPR3
 
-Vehicle-region cropping
+Video
 
-License-plate extraction
+EZVIZ HLS
 
 Blockchain
 
-Web3
-
-Arbitrum Sepolia
+Web3.py, Arbitrum Sepolia
 
 Notifications
 
-Twilio
-
-WhatsApp
+Twilio, WhatsApp
 
 Deployment
 
-GitHub
+GitHub, Railway
 
-Railway
+Architecture
 
-📁 Project Structure
+┌─────────────────────────────────────────────┐
+│                  FRONTEND                   │
+│                                             │
+│ React + Vite                                │
+│                                             │
+│ • Camera Monitoring                         │
+│ • AI Analysis                               │
+│ • Metrics                                   │
+│ • Vehicle Classification                    │
+│ • ANPR / OCR                                │
+│ • Incident Records                          │
+│ • AI Copilot                                │
+└───────────────────────┬─────────────────────┘
+                        │
+                     REST API
+                        │
+                        ▼
+┌─────────────────────────────────────────────┐
+│                  BACKEND                    │
+│                                             │
+│ FastAPI + Python                            │
+│                                             │
+│ • EZVIZ integration                         │
+│ • YOLOv8                                    │
+│ • OCR / ANPR                                │
+│ • Incident detection                        │
+│ • Blockchain integration                    │
+│ • WhatsApp notifications                    │
+│ • Statistics                                │
+│ • AI Copilot API                            │
+└──────────────┬───────────────────┬──────────┘
+               │                   │
+               ▼                   ▼
+        ┌──────────────┐    ┌───────────────┐
+        │ EZVIZ Camera │    │   Arbitrum    │
+        │  HLS Stream  │    │    Sepolia    │
+        └──────────────┘    └───────────────┘
+               │
+               ▼
+           Live Input
+
+               ┌─────────────────┐
+               │ Twilio / WhatsApp│
+               └─────────────────┘
+
+Project Structure
 
 VIGIL-AE-Protocol/
 │
@@ -503,73 +476,42 @@ VIGIL-AE-Protocol/
     ├── package.json
     └── vite.config.js
 
-🔌 Main API Endpoints
+API
 
-Live video
+Video
+
+GET /video_feed_raw
+
+Live monitoring stream without AI overlays.
 
 GET /video_feed_1
 
-AI-processed surveillance stream.
-
-ANPR video
+AI-processed camera stream.
 
 GET /video_feed_anpr
 
 ANPR analysis stream.
 
-Camera status
+Monitoring
 
 GET /api/camera/status
-
-Returns technical camera and streaming information.
-
-Statistics
-
 GET /api/stats
-
-Returns real-time surveillance metrics and incident data.
-
-ANPR statistics
-
 GET /api/anpr/stats
 
-Returns ANPR activity statistics.
+Incidents
 
-Incident records
-
-GET /api/expedientes
-
-Returns registered incident records.
-
-Simulate incident
-
+GET  /api/expedientes
 POST /api/simular_multa
-
-Creates a test incident.
-
-Plate focusing
-
 POST /api/focalizar_placa
-
-Sets the plate currently being monitored.
-
-Change incident status
-
 POST /api/expedientes/{acta_id}/estado
-
-Updates the status of an incident.
 
 AI Copilot
 
 POST /api/chat
 
-Natural-language interaction with the surveillance system.
+Environment Variables
 
-⚙️ Environment Variables
-
-The project uses environment variables for sensitive credentials and external services.
-
-Typical configuration includes:
+Credentials and secrets must be supplied through environment variables.
 
 ACCESS_TOKEN=
 APP_KEY=
@@ -587,19 +529,13 @@ WEB3_RPC_URL=
 PRIVATE_KEY=
 CONTRACT_ADDRESS=
 
-Never commit API keys, private keys, access tokens, or other credentials to GitHub.
+Never commit API keys, access tokens, wallet private keys, or service credentials to GitHub.
 
-🚀 Local Development
+Running Locally
 
-1. Clone the repository
-
-git clone https://github.com/jfrank-code/VIGIL-AE-Protocol.git
-cd VIGIL-AE-Protocol
-
-2. Backend
+Backend
 
 cd backend
-
 python -m venv venv
 
 Windows
@@ -614,38 +550,31 @@ Install dependencies:
 
 pip install -r requirements.txt
 
-Configure the environment variables and start FastAPI:
+Run:
 
 python main.py
 
-Backend:
+API:
 
 http://localhost:8000
 
-Swagger documentation:
+Swagger:
 
 http://localhost:8000/docs
 
-💻 Frontend
+Frontend
 
-From the frontend directory:
-
+cd frontend
 npm install
 npm run dev
 
-Configure the backend URL through:
-
-VITE_API_URL=
-
-Example:
+Configure:
 
 VITE_API_URL=http://localhost:8000
 
-☁️ Deployment
+Deployment
 
-The backend can be deployed using Docker-compatible cloud infrastructure such as Railway.
-
-General deployment flow:
+The project can be deployed using GitHub + Railway.
 
 GitHub
    │
@@ -653,113 +582,88 @@ GitHub
 Railway
    │
    ▼
-Docker Build
+Docker
    │
    ▼
-FastAPI Backend
-   │
+FastAPI
    ├── EZVIZ
-   ├── YOLO
+   ├── YOLOv8
    ├── OCR
    ├── Blockchain
    └── Twilio
 
-The frontend can be deployed separately and configured with the backend API URL.
+Prototype Status
 
-🔐 Security Considerations
+The current prototype demonstrates an integrated surveillance workflow including:
 
-Because VIGIL-AE integrates cameras, blockchain wallets, APIs, and messaging services, secrets must always be stored outside the source code.
+✅ Live camera monitoring
 
-Never commit:
-
-APP_SECRET
-ACCESS_TOKEN
-PRIVATE_KEY
-TWILIO_AUTH_TOKEN
-
-Use environment variables or a secure secrets manager.
-
-🧪 Prototype Status
-
-VIGIL-AE is currently a functional prototype / MVP designed to demonstrate the complete surveillance workflow.
-
-The system integrates:
-
-✅ Live surveillance
 ✅ AI vehicle detection
+
 ✅ Vehicle classification
-✅ Restricted-zone detection
+
+✅ Restricted-zone monitoring
+
 ✅ ANPR / OCR
-✅ Incident generation
+
 ✅ Evidence capture
+
+✅ Incident generation
+
 ✅ Blockchain registration
+
 ✅ Blockchain status tracking
+
 ✅ WhatsApp alerts
+
 ✅ AI Copilot
+
 ✅ Real-time dashboard
 
-Some components, such as simulated license plates used when OCR does not obtain a valid reading, are intended for demonstration and should be replaced with validated production data sources before operational deployment.
+Some demonstration-specific behavior, such as simulated plate values when OCR fails, should be replaced with validated production evidence before operational deployment.
 
-🎯 Future Improvements
+Roadmap
 
-Potential future development includes:
+Possible next steps include:
 
 Multi-camera scaling.
 
+Stronger HLS recovery.
+
 GPU-accelerated inference.
 
-More robust HLS stream recovery.
+Improved ANPR under difficult lighting.
 
-Improved license plate recognition under difficult lighting.
+Persistent database storage.
 
-Multi-zone traffic analysis.
-
-Centralized persistent database storage.
+Multi-zone traffic analytics.
 
 Advanced vehicle tracking.
 
-Event prioritization.
+Production authentication and authorization.
 
-Government-system integrations.
+Integration with external traffic-management systems.
 
-Mobile operator application.
+Why VIGIL-AE?
 
-Expanded blockchain evidence schemas.
+The core idea is simple:
 
-Production-grade authentication and authorization.
+Do more than watch the road — understand it, document it, and make the resulting record verifiable.
 
-🌎 Impact
+VIGIL-AE connects:
 
-VIGIL-AE is designed around a practical challenge faced by modern cities: transforming large volumes of surveillance video into actionable and traceable information.
+Camera + AI + ANPR + Incident Detection + Blockchain + Alerts
 
-The system combines:
+into one operational workflow.
 
-Computer Vision
-       +
-ANPR / OCR
-       +
-Automated Incident Detection
-       +
-Blockchain
-       +
-Real-Time Alerts
-       +
-Operational Dashboard
-
-The result is a surveillance platform capable of moving from observation to verifiable digital evidence.
-
-📌 Project
+Repository
 
 VIGIL-AE Protocol
 
-AI-powered surveillance platform for traffic monitoring, automated incident detection, ANPR, alerts, and verifiable blockchain evidence.
-
-GitHub:
-
 https://github.com/jfrank-code/VIGIL-AE-Protocol
 
-📄 License
+License
 
 This project is provided for research, experimentation, and prototype development purposes.
 
-Before deploying the system in a real-world surveillance environment, appropriate legal, privacy, security, and operational requirements should be evaluated.
+Before real-world deployment, applicable privacy, security, legal, and operational requirements should be evaluated.
