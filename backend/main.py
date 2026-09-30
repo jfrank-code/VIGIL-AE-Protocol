@@ -766,7 +766,7 @@ def bucle_analitica_principal():
             p_a1 = np.array([[int(p[0]*w1), int(p[1]*h1)] for p in POLIGONO_A_PORCENTUAL], np.int32)
 
             if hay_frame1_nuevo:
-                res1 = model.predict(frame1, imgsz=512, conf=0.30, verbose=False)[0]
+                res1 = model.predict(frame1, imgsz=320, conf=0.30, verbose=False)[0]
                 nuevos_vehiculos_c1 = []
 
                 if res1.boxes is not None:
